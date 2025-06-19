@@ -1,5 +1,6 @@
 import unittest
 import tempfile
+import os
 import tensorflow as tf
 from src.word2gm_fast.dataprep.load_and_filter_corpus import load_and_filter_corpus
 
@@ -24,6 +25,7 @@ class TestLoadAndFilterCorpus(unittest.TestCase):
 
     def tearDown(self):
         self.temp_file.close()
+        os.unlink(self.temp_file.name)
 
     def test_load_and_filter(self):
         dataset, summary = load_and_filter_corpus(self.temp_file.name)
