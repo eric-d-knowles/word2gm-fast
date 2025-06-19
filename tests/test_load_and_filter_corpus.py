@@ -1,3 +1,9 @@
+"""Unit tests for load_and_filter_corpus 5-gram filtering logic.
+
+This script tests all valid and invalid 5-gram combinations for the
+phrase 'the quick brown fox jumps' with any subset of words replaced by
+'UNK'. It ensures correct filtering and summary statistics.
+"""
 import unittest
 import tempfile
 import os
@@ -5,36 +11,91 @@ import tensorflow as tf
 from src.word2gm_fast.dataprep.load_and_filter_corpus import load_and_filter_corpus
 
 class TestLoadAndFilterCorpus(unittest.TestCase):
-    def setUp(self):
-        # Create a temporary file with test 5-gram lines
+    """Unit tests for the load_and_filter_corpus function."""
+
+    def setUp(self) -> None:
+        """Create a temporary file with all 32 possible 5-gram lines."""
         self.temp_file = tempfile.NamedTemporaryFile(mode='w+', delete=False)
         self.lines = [
-            "the quick brown fox jumps\n",      # valid
-            "UNK quick brown fox jumps\n",      # invalid (center is UNK)
-            "the quick brown UNK jumps\n",      # valid (context has at least one non-UNK)
-            "the quick brown fox UNK\n",        # valid (context has at least one non-UNK)
-            "UNK UNK UNK UNK UNK\n"             # invalid (all UNK)
+            # Valid cases (at least one context is non-UNK, center is not UNK)
+            "the quick brown fox jumps\n",
+            "UNK quick brown fox jumps\n",
+            "the UNK brown fox jumps\n",
+            "the quick brown UNK jumps\n",
+            "the quick brown fox UNK\n",
+            "UNK UNK brown fox jumps\n",
+            "UNK quick brown UNK jumps\n",
+            "UNK quick brown fox UNK\n",
+            "the UNK brown UNK jumps\n",
+            "the UNK brown fox UNK\n",
+            "UNK UNK brown UNK jumps\n",
+            "UNK UNK brown fox UNK\n",
+            "the quick brown UNK UNK\n",
+            "UNK quick brown UNK UNK\n",
+            "the UNK brown UNK UNK\n",
+            # Invalid cases (center is UNK or all context is UNK)
+            "the quick UNK fox jumps\n",
+            "the UNK UNK fox jumps\n",
+            "UNK quick UNK fox jumps\n",
+            "the quick UNK UNK jumps\n",
+            "the quick UNK fox UNK\n",
+            "the quick UNK UNK UNK\n",
+            "UNK UNK UNK fox jumps\n",
+            "UNK quick UNK UNK jumps\n",
+            "UNK quick UNK fox UNK\n",
+            "UNK quick UNK UNK UNK\n",
+            "the UNK UNK UNK jumps\n",
+            "the UNK UNK fox UNK\n",
+            "the UNK UNK UNK UNK\n",
+            "the quick UNK UNK UNK\n",
+            "UNK UNK UNK UNK jumps\n",
+            "UNK UNK UNK fox UNK\n",
+            "UNK UNK brown UNK UNK\n",
         ]
         self.valid_lines = [
-            "the quick brown fox jumps",
-            "the quick brown UNK jumps",
-            "the quick brown fox UNK"
+            "the quick brown fox jumps\n",
+            "UNK quick brown fox jumps\n",
+            "the UNK brown fox jumps\n",
+            "the quick brown UNK jumps\n",
+            "the quick brown fox UNK\n",
+            "UNK UNK brown fox jumps\n",
+            "UNK quick brown UNK jumps\n",
+            "UNK quick brown fox UNK\n",
+            "the UNK brown UNK jumps\n",
+            "the UNK brown fox UNK\n",
+            "UNK UNK brown UNK jumps\n",
+            "UNK UNK brown fox UNK\n",
+            "the quick brown UNK UNK\n",
+            "UNK quick brown UNK UNK\n",
+            "the UNK brown UNK UNK\n",
         ]
         self.temp_file.writelines(self.lines)
         self.temp_file.flush()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
+        """Remove the temporary file after tests."""
         self.temp_file.close()
         os.unlink(self.temp_file.name)
 
-    def test_load_and_filter(self):
-        dataset, summary = load_and_filter_corpus(self.temp_file.name)
-        result_lines = [line.numpy().decode("utf-8") for line in dataset]
-        self.assertCountEqual(result_lines, self.valid_lines)
+    def test_load_and_filter(self) -> None:
+        """Test that only valid 5-grams are retained and summary is correct."""
+        dataset, summary = load_and_filter_corpus(
+            self.temp_file.name, show_summary=True
+        )
+        result_lines = [line.numpy().decode("utf-8").strip() for line in dataset]
+        expected_lines = [line.strip() for line in self.valid_lines]
+
+        # Uncomment for debugging:
+        # print("Expected valid lines:", set(self.valid_lines))
+        # print("Actual result lines:", set(result_lines))
+        # print("Missing from result:", set(self.valid_lines) - set(result_lines))
+        # print("Unexpected in result:", set(result_lines) - set(self.valid_lines))
+
+        self.assertCountEqual(result_lines, expected_lines)
         self.assertIsInstance(summary, dict)
-        self.assertEqual(summary["retained"], 3)
-        self.assertEqual(summary["rejected"], 2)
-        self.assertEqual(summary["total"], 5)
+        self.assertEqual(summary["retained"], 15)
+        self.assertEqual(summary["rejected"], 17)
+        self.assertEqual(summary["total"], 32)
 
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(buffer=False)
