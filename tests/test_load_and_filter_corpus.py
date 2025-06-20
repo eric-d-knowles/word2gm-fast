@@ -1,4 +1,4 @@
-"""Unit tests for load_and_filter_corpus 5-gram filtering logic.
+"""Unit tests for filter_corpus 5-gram filtering logic.
 
 This script tests all valid and invalid 5-gram combinations for the
 phrase 'the quick brown fox jumps' with any subset of words replaced by
@@ -8,10 +8,10 @@ import unittest
 import tempfile
 import os
 import tensorflow as tf
-from src.word2gm_fast.dataprep.load_and_filter_corpus import load_and_filter_corpus
+from src.word2gm_fast.dataprep.filter_corpus import filter_corpus
 
-class TestLoadAndFilterCorpus(unittest.TestCase):
-    """Unit tests for the load_and_filter_corpus function."""
+class TestFilterCorpus(unittest.TestCase):
+    """Unit tests for the filter_corpus function."""
 
     def setUp(self) -> None:
         """Create a temporary file with all 32 possible 5-gram lines."""
@@ -77,9 +77,9 @@ class TestLoadAndFilterCorpus(unittest.TestCase):
         self.temp_file.close()
         os.unlink(self.temp_file.name)
 
-    def test_load_and_filter(self) -> None:
+    def test_filter_corpus(self) -> None:
         """Test that only valid 5-grams are retained and summary is correct."""
-        dataset, summary = load_and_filter_corpus(
+        dataset, summary = filter_corpus(
             self.temp_file.name, show_summary=True
         )
         result_lines = [line.numpy().decode("utf-8").strip() for line in dataset]

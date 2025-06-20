@@ -1,4 +1,4 @@
-# training/load_and_filter_corpus.py
+# training/filter_corpus.py
 
 """
 Load a 5-gram corpus, filter out malformed lines, and prepare a dataset
@@ -105,7 +105,7 @@ def print_dataset_summary(dataset: tf.data.Dataset, filepath: str):
     return summary
 
 
-def load_and_filter_corpus(
+def filter_corpus(
     filepath: str,
     preview_n: int = 0,
     cache: bool = False,
