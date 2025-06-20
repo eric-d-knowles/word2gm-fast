@@ -8,10 +8,10 @@ import unittest
 import tempfile
 import os
 import tensorflow as tf
-from src.word2gm_fast.dataprep.filter_corpus import filter_corpus
+from src.word2gm_fast.dataprep.corpus_to_dataset import make_dataset
 
-class TestFilterCorpus(unittest.TestCase):
-    """Unit tests for the filter_corpus function."""
+class TestCorpusToDataset(unittest.TestCase):
+    """Unit tests for the make_dataset function."""
 
     def setUp(self) -> None:
         """Create a temporary file with all 32 possible 5-gram lines."""
@@ -77,9 +77,9 @@ class TestFilterCorpus(unittest.TestCase):
         self.temp_file.close()
         os.unlink(self.temp_file.name)
 
-    def test_filter_corpus(self) -> None:
+    def test_corpus_to_dataset(self) -> None:
         """Test that only valid 5-grams are retained and summary is correct."""
-        dataset, summary = filter_corpus(
+        dataset, summary = make_dataset(
             self.temp_file.name, show_summary=True
         )
         result_lines = [line.numpy().decode("utf-8").strip() for line in dataset]
