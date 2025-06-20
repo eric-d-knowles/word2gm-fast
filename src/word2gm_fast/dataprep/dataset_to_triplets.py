@@ -1,6 +1,11 @@
-# dataprep/dataset_to_triplets.py
+"""
+Convert a dataset of 5-gram lines into (center, positive, negative) skip-gram
+triplets for training. All logic is implemented with TensorFlow ops for tracing
+safety and speed.
+"""
 
 import tensorflow as tf
+
 
 def build_skipgram_triplets(
     dataset: tf.data.Dataset,
@@ -9,9 +14,10 @@ def build_skipgram_triplets(
     unk_index: int = 0,
 ) -> tf.data.Dataset:
     """
-    Convert lines of text into (center, positive, negative) skipgram triplets.
-    
-    Filters out triplets where the center word is UNK.
+    Convert lines of text into (center, positive, negative) skip-gram triplets.
+
+    Filters out triplets where the center word is UNK or where no valid context
+    exists.
 
     Parameters
     ----------
@@ -21,8 +27,8 @@ def build_skipgram_triplets(
         Lookup table mapping tokens to vocab indices.
     vocab_size : int
         Total vocabulary size (used for uniform negative sampling).
-    unk_index : int
-        Index assigned to 'UNK' token. Positive words with this index are skipped.
+    unk_index : int, optional
+        Index assigned to the 'UNK' token (default is 0).
 
     Returns
     -------
@@ -30,7 +36,20 @@ def build_skipgram_triplets(
         Dataset of (center, positive, negative) training triplets.
     """
 
-    def generate_triplet(line):
+    def generate_triplet(line: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        """
+        Generate a single skip-gram triplet from a 5-gram line.
+
+        Parameters
+        ----------
+        line : tf.Tensor
+            A single 5-gram line as a TensorFlow string tensor.
+
+        Returns
+        -------
+        tuple
+            (center, positive, negative) token indices, or (-1, -1, -1) if invalid.
+        """
         tokens = tf.strings.split(tf.strings.strip(line))
         token_ids = vocab_table.lookup(tokens)
 
@@ -49,9 +68,16 @@ def build_skipgram_triplets(
             )
 
         def select_positive():
-            rand_index = tf.random.uniform([], minval=0, maxval=tf.shape(valid_context_ids)[0], dtype=tf.int32)
+            rand_index = tf.random.uniform(
+                [], 
+                minval=0, 
+                maxval=tf.shape(valid_context_ids)[0], 
+                dtype=tf.int32
+            )
             pos_id = tf.cast(valid_context_ids[rand_index], tf.int64)
-            neg_id = tf.random.uniform([], minval=1, maxval=vocab_size, dtype=tf.int64)
+            neg_id = tf.random.uniform(
+                [], minval=1, maxval=vocab_size, dtype=tf.int64
+            )
             return tf.cast(center_id, tf.int64), pos_id, neg_id
 
         return tf.cond(
@@ -60,13 +86,34 @@ def build_skipgram_triplets(
             false_fn=skip_line,
         )
 
-    def is_valid_triplet(center, pos, neg):
+    def is_valid_triplet(
+        center: tf.Tensor, pos: tf.Tensor, neg: tf.Tensor
+    ) -> tf.Tensor:
+        """
+        Check if a triplet is valid (center is not -1 or UNK).
+
+        Parameters
+        ----------
+        center : tf.Tensor
+            Center token index.
+        pos : tf.Tensor
+            Positive token index.
+        neg : tf.Tensor
+            Negative token index.
+
+        Returns
+        -------
+        tf.Tensor
+            Boolean tensor indicating validity.
+        """
         return tf.logical_and(
             tf.not_equal(center, -1),
-            tf.not_equal(center, unk_index)  # Filter out UNK as center
+            tf.not_equal(center, unk_index)
         )
 
-    triplet_ds = dataset.map(generate_triplet, num_parallel_calls=tf.data.AUTOTUNE)
+    triplet_ds = dataset.map(
+        generate_triplet, num_parallel_calls=tf.data.AUTOTUNE
+    )
     triplet_ds = triplet_ds.filter(is_valid_triplet)
 
     return triplet_ds

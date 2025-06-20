@@ -1,5 +1,3 @@
-# dataprep/dataset_to_vocab.py
-
 """
 Convert a tf.data.Dataset of lines into a tf.lookup.StaticHashTable containing
 the corpus vocabulary. 'UNK' will be at index 0. All other tokens are sorted 
@@ -28,7 +26,9 @@ def build_vocab_table(vocab_list: list[str]) -> tf.lookup.StaticHashTable:
         A lookup table mapping tokens to integer IDs.
     """
     if vocab_list[0] != "UNK":
-        raise ValueError(f"UNK token must be at index 0, got {vocab_list[0]}")
+        raise ValueError(
+            f"UNK token must be at index 0, got {vocab_list[0]}"
+        )
     keys = tf.constant(vocab_list, dtype=tf.string)
     values = tf.range(len(vocab_list), dtype=tf.int32)
     return tf.lookup.StaticHashTable(
@@ -65,4 +65,8 @@ def make_vocab(dataset: tf.data.Dataset) -> tf.lookup.StaticHashTable:
     unique_tokens = tokens.unique()
     vocab_bytes = list(unique_tokens.as_numpy_iterator())
     vocab = ["UNK"] + sorted(
-        tok.decode("utf-8") for tok in vocab_bytes if tok.decode("utf-8") != "UNK"
+        tok.decode("utf-8") 
+        for tok in vocab_bytes 
+        if tok.decode("utf-8") != "UNK"
+    )
+    return build_vocab_table(vocab)
