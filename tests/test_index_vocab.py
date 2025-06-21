@@ -1,13 +1,17 @@
 """
-Unit tests for dataset_to_vocab.py
+Unit tests for index_vocab.py
 """
 import unittest
 import tensorflow as tf
 import numpy as np
-from src.word2gm_fast.dataprep.dataset_to_vocab import make_vocab, build_vocab_table
+from src.word2gm_fast.dataprep.index_vocab import make_vocab, build_vocab_table
 
-class TestDatasetToVocab(unittest.TestCase):
-    def setUp(self):
+
+class TestIndexVocab(unittest.TestCase):
+    """Unit tests for vocabulary indexing functions."""
+    
+    def setUp(self) -> None:
+        """Set up test data with diverse vocabulary and repeated tokens."""
         # Example dataset with more n-gram variety and some repeated/UNK tokens
         self.lines = [
             b"the quick brown fox jumps",
@@ -28,16 +32,21 @@ class TestDatasetToVocab(unittest.TestCase):
         ]
         self.dataset = tf.data.Dataset.from_tensor_slices(self.lines)
 
-    def test_make_vocab_table(self):
+    def test_make_vocab_table(self) -> None:
+        """Test that make_vocab creates a lookup table with correct mappings."""
         table = make_vocab(self.dataset)
+        
         # Check that known tokens map to correct indices
-        for token in ["UNK", "the", "quick", "brown", "fox", "jumps", "lazy", "dog", "over"]:
+        expected_tokens = ["UNK", "the", "quick", "brown", "fox", "jumps", "lazy", "dog", "over"]
+        for token in expected_tokens:
             idx = table.lookup(tf.constant(token)).numpy()
             self.assertIsInstance(idx, (int, np.integer))
+            
         # UNK must be index 0
         self.assertEqual(table.lookup(tf.constant("UNK")).numpy(), 0)
 
-    def test_vocab_table_contents(self):
+    def test_vocab_table_contents(self) -> None:
+        """Test that build_vocab_table creates correct token-to-index mappings."""
         # Build vocab list and table separately for direct inspection
         vocab_set = set()
         for line in self.lines:
@@ -45,9 +54,11 @@ class TestDatasetToVocab(unittest.TestCase):
             vocab_set.update(tokens)
         vocab = ["UNK"] + sorted(tok for tok in vocab_set if tok != "UNK")
         table = build_vocab_table(vocab)
+        
         # Check that all tokens are present and mapped correctly
         for i, token in enumerate(vocab):
             self.assertEqual(table.lookup(tf.constant(token)).numpy(), i)
+            
         # Check that an OOV token maps to 0 (UNK)
         self.assertEqual(table.lookup(tf.constant("notinthevocab")).numpy(), 0)
 

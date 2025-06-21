@@ -10,14 +10,13 @@ import tensorflow as tf
 def build_skipgram_triplets(
     dataset: tf.data.Dataset,
     vocab_table: tf.lookup.StaticHashTable,
-    vocab_size: int,
-    unk_index: int = 0,
 ) -> tf.data.Dataset:
     """
     Convert lines of text into (center, positive, negative) skip-gram triplets.
 
-    Filters out triplets where the center word is UNK or where no valid context
-    exists.
+    Generates multiple triplets per valid 5-gram line (one for each valid
+    context word). Only generates valid triplets (center is not UNK).
+    UNK is always at index 0.
 
     Parameters
     ----------
@@ -25,20 +24,20 @@ def build_skipgram_triplets(
         Dataset of 5-gram text lines.
     vocab_table : tf.lookup.StaticHashTable
         Lookup table mapping tokens to vocab indices.
-    vocab_size : int
-        Total vocabulary size (used for uniform negative sampling).
-    unk_index : int, optional
-        Index assigned to the 'UNK' token (default is 0).
 
     Returns
     -------
     tf.data.Dataset
         Dataset of (center, positive, negative) training triplets.
     """
+    # Pre-compute constants outside the hot path
+    vocab_size = vocab_table.size()
+    context_indices = tf.constant([0, 1, 3, 4], dtype=tf.int32)
 
-    def generate_triplet(line: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    def generate_all_triplets(line: tf.Tensor):
         """
-        Generate a single skip-gram triplet from a 5-gram line.
+        Generate all valid skip-gram triplets from a 5-gram line.
+        Returns a dataset of triplets for this line.
 
         Parameters
         ----------
@@ -47,73 +46,56 @@ def build_skipgram_triplets(
 
         Returns
         -------
-        tuple
-            (center, positive, negative) token indices, or (-1, -1, -1) if invalid.
+        tf.data.Dataset
+            Dataset of (center, positive, negative) triplets for this line.
         """
         tokens = tf.strings.split(tf.strings.strip(line))
         token_ids = vocab_table.lookup(tokens)
 
         center_id = token_ids[2]
-        context_indices = tf.constant([0, 1, 3, 4], dtype=tf.int32)
         context_ids = tf.gather(token_ids, context_indices)
 
-        valid_mask = tf.not_equal(context_ids, unk_index)
+        # Filter out UNK context words and skip if center is UNK
+        valid_mask = tf.not_equal(context_ids, 0)
         valid_context_ids = tf.boolean_mask(context_ids, valid_mask)
 
-        def skip_line():
-            return (
-                tf.constant(-1, dtype=tf.int64),
-                tf.constant(-1, dtype=tf.int64),
-                tf.constant(-1, dtype=tf.int64),
-            )
+        # Skip lines where center is UNK or no valid context exists
+        skip_condition = tf.logical_or(
+            tf.equal(center_id, 0),  # Center is UNK
+            tf.equal(tf.shape(valid_context_ids)[0], 0)  # No valid context
+        )
 
-        def select_positive():
-            rand_index = tf.random.uniform(
-                [], 
-                minval=0, 
-                maxval=tf.shape(valid_context_ids)[0], 
-                dtype=tf.int32
+        def create_triplets():
+            # Generate negative samples for each positive context
+            num_contexts = tf.shape(valid_context_ids)[0]
+            negatives = tf.random.uniform(
+                [num_contexts], minval=1, maxval=vocab_size, dtype=tf.int32
             )
-            pos_id = tf.cast(valid_context_ids[rand_index], tf.int64)
-            neg_id = tf.random.uniform(
-                [], minval=1, maxval=vocab_size, dtype=tf.int64
-            )
-            return tf.cast(center_id, tf.int64), pos_id, neg_id
+            
+            # Broadcast center to match number of contexts
+            centers = tf.fill([num_contexts], center_id)
+            
+            # Create triplets: (center, positive_context, negative)
+            triplets = tf.stack([
+                tf.cast(centers, tf.int64),
+                tf.cast(valid_context_ids, tf.int64),
+                tf.cast(negatives, tf.int64)
+            ], axis=1)
+            
+            return tf.data.Dataset.from_tensor_slices(triplets)
+
+        def empty_dataset():
+            # Return empty dataset with correct shape
+            empty_triplets = tf.zeros([0, 3], dtype=tf.int64)
+            return tf.data.Dataset.from_tensor_slices(empty_triplets)
 
         return tf.cond(
-            tf.shape(valid_context_ids)[0] > 0,
-            true_fn=select_positive,
-            false_fn=skip_line,
+            skip_condition,
+            true_fn=empty_dataset,
+            false_fn=create_triplets
         )
 
-    def is_valid_triplet(
-        center: tf.Tensor, pos: tf.Tensor, neg: tf.Tensor
-    ) -> tf.Tensor:
-        """
-        Check if a triplet is valid (center is not -1 or UNK).
-
-        Parameters
-        ----------
-        center : tf.Tensor
-            Center token index.
-        pos : tf.Tensor
-            Positive token index.
-        neg : tf.Tensor
-            Negative token index.
-
-        Returns
-        -------
-        tf.Tensor
-            Boolean tensor indicating validity.
-        """
-        return tf.logical_and(
-            tf.not_equal(center, -1),
-            tf.not_equal(center, unk_index)
-        )
-
-    triplet_ds = dataset.map(
-        generate_triplet, num_parallel_calls=tf.data.AUTOTUNE
-    )
-    triplet_ds = triplet_ds.filter(is_valid_triplet)
+    # Use flat_map to generate multiple triplets per line
+    triplet_ds = dataset.flat_map(generate_all_triplets)
 
     return triplet_ds
