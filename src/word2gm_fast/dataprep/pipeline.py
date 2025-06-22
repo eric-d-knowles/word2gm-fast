@@ -22,16 +22,10 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 from io import StringIO
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing as mp
 
-# Import TensorFlow with silencing
-from ..utils import import_tensorflow_silently
-tf = import_tensorflow_silently(deterministic=False)
-
-# Import pipeline components
-from .corpus_to_dataset import make_dataset
-from .index_vocab import make_vocab
-from .dataset_to_triplets import build_skipgram_triplets
-from .tfrecord_io import save_pipeline_artifacts
+# Pipeline components will be imported when needed to avoid multiprocessing issues
 
 
 def prepare_training_data(
@@ -102,6 +96,15 @@ def prepare_training_data(
     >>> print(f"Vocabulary size: {summary['vocab_size']:,}")
     >>> print(f"Training triplets: {summary['triplet_count']:,}")
     """
+    
+    # Import TensorFlow and pipeline components inside function to avoid multiprocessing issues
+    from ..utils import import_tensorflow_silently
+    tf = import_tensorflow_silently(deterministic=False)
+    
+    from .corpus_to_dataset import make_dataset
+    from .index_vocab import make_vocab
+    from .dataset_to_triplets import build_skipgram_triplets
+    from .tfrecord_io import save_pipeline_artifacts
     
     # Validate inputs
     corpus_path = os.path.join(corpus_dir, corpus_file)
@@ -215,6 +218,7 @@ def prepare_training_data(
         print(f"Compression ratio:  {file_size_mb / total_artifact_size_mb:.3f}x")
         print(f"Total time:         {total_duration:.3f}s")
         print(f"Processing rate:    {file_size_mb / total_duration:.3f} MB/s")
+        print(f"Triplet rate:       {triplet_count / total_duration:.3f} MB/s")
         print()
         print("📁 Generated files:")
         print(f"   🎯 {os.path.basename(triplets_file)} ({triplets_size_mb:.3f} MB)")
@@ -265,6 +269,15 @@ def prepare_training_data_fast(
     summary : dict
         Dictionary with pipeline statistics and file information
     """
+    
+    # Import TensorFlow and pipeline components inside function to avoid multiprocessing issues
+    from ..utils import import_tensorflow_silently
+    tf = import_tensorflow_silently(deterministic=False)
+    
+    from .corpus_to_dataset import make_dataset
+    from .index_vocab import make_vocab
+    from .dataset_to_triplets import build_skipgram_triplets
+    from .tfrecord_io import write_triplets_to_tfrecord_silent, write_vocab_to_tfrecord
     
     # Validate inputs (same as original)
     corpus_path = os.path.join(corpus_dir, corpus_file)
@@ -425,15 +438,52 @@ def get_corpus_years(corpus_dir: str) -> list:
     return sorted(years)
 
 
+def _process_single_year(args):
+    """
+    Helper function for multiprocessing - processes a single year.
+    
+    Parameters
+    ----------
+    args : tuple
+        (year, corpus_dir, compress, show_progress) tuple
+        
+    Returns
+    -------
+    tuple
+        (year, success, result) where result is either summary dict or error string
+    """
+    year, corpus_dir, compress, show_progress = args
+    
+    try:
+        corpus_file = f"{year}.txt"
+        output_subdir = f"{year}_artifacts"
+        
+        output_dir, summary = prepare_training_data(
+            corpus_file=corpus_file,
+            corpus_dir=corpus_dir,
+            output_subdir=output_subdir,
+            compress=compress,
+            show_progress=show_progress,
+            show_summary=False  # Suppress individual summaries in parallel mode
+        )
+        
+        return (year, True, summary)
+        
+    except Exception as e:
+        return (year, False, str(e))
+
+
 def batch_prepare_training_data(
     years: list,
     corpus_dir: str,
     compress: bool = True,
     show_progress: bool = True,
-    show_summary: bool = True
+    show_summary: bool = True,
+    max_workers: int = None,
+    use_multiprocessing: bool = True
 ) -> dict:
     """
-    Prepare training data for multiple years in batch.
+    Prepare training data for multiple years in batch with optional parallel processing.
     
     Parameters
     ----------
@@ -447,6 +497,12 @@ def batch_prepare_training_data(
         Whether to show progress for each year
     show_summary : bool, default=True
         Whether to display a summary of the batch processing
+    max_workers : int, optional
+        Maximum number of parallel workers. If None, uses min(cpu_count(), len(years))
+    use_multiprocessing : bool, default=True
+        Whether to use multiprocessing for parallel year processing.
+        If False, processes years sequentially.
+        
     Returns
     -------
     dict
@@ -454,42 +510,108 @@ def batch_prepare_training_data(
         
     Examples
     --------
-    >>> # Process multiple years
+    >>> # Process multiple years in parallel (default)
     >>> results = batch_prepare_training_data(
     ...     years=["2018", "2019", "2020"],
-    ...     corpus_dir="/vast/edk202/NLP_corpora/..."
+    ...     corpus_dir="/vast/edk202/NLP_corpora/...",
+    ...     max_workers=4
     ... )
     >>> 
-    >>> for year, summary in results.items():
-    ...     print(f"{year}: {summary['vocab_size']:,} vocab, {summary['triplet_count']:,} triplets")
+    >>> # Process sequentially (for debugging)
+    >>> results = batch_prepare_training_data(
+    ...     years=["2018", "2019"],
+    ...     corpus_dir="/vast/edk202/NLP_corpora/...",
+    ...     use_multiprocessing=False
+    ... )
     """
     results = {}
     
-    for i, year in enumerate(years, 1):
+    if not use_multiprocessing or len(years) == 1:
+        # Sequential processing (original implementation)
+        for i, year in enumerate(years, 1):
+            if show_progress:
+                print(f"\n{'='*60}")
+                print(f"📅 Processing year {year} ({i}/{len(years)})")
+                print(f"{'='*60}")
+            
+            try:
+                corpus_file = f"{year}.txt"
+                output_subdir = f"{year}_artifacts"
+                
+                output_dir, summary = prepare_training_data(
+                    corpus_file=corpus_file,
+                    corpus_dir=corpus_dir,
+                    output_subdir=output_subdir,
+                    compress=compress,
+                    show_progress=show_progress
+                )
+                
+                results[year] = summary
+                
+            except Exception as e:
+                if show_progress:
+                    print(f"❌ Error processing {year}: {e}")
+                results[year] = {'error': str(e)}
+    
+    else:
+        # Parallel processing using multiprocessing
+        if max_workers is None:
+            max_workers = min(mp.cpu_count(), len(years))
+        
         if show_progress:
             print(f"\n{'='*60}")
-            print(f"📅 Processing year {year} ({i}/{len(years)})")
+            print(f"🚀 PARALLEL BATCH PROCESSING")
+            print(f"{'='*60}")
+            print(f"📅 Processing {len(years)} years: {', '.join(years)}")
+            print(f"💻 Using {max_workers} parallel workers")
+            print(f"⚡ Estimated speedup: {min(max_workers, len(years)):.1f}x")
             print(f"{'='*60}")
         
-        try:
-            corpus_file = f"{year}.txt"
-            output_subdir = f"{year}_artifacts"
+        # Prepare arguments for worker processes
+        worker_args = [(year, corpus_dir, compress, False) for year in years]  # show_progress=False in workers
+        
+        # Start parallel processing
+        start_time = time.perf_counter()
+        completed_count = 0
+        
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all jobs
+            future_to_year = {
+                executor.submit(_process_single_year, args): args[0] 
+                for args in worker_args
+            }
             
-            output_dir, summary = prepare_training_data(
-                corpus_file=corpus_file,
-                corpus_dir=corpus_dir,
-                output_subdir=output_subdir,
-                compress=compress,
-                show_progress=show_progress
-            )
-            
-            results[year] = summary
-            
-        except Exception as e:
-            if show_progress:
-                print(f"❌ Error processing {year}: {e}")
-            results[year] = {'error': str(e)}
-    
+            # Collect results as they complete
+            for future in as_completed(future_to_year):
+                year = future_to_year[future]
+                completed_count += 1
+                
+                try:
+                    year_result, success, data = future.result()
+                    
+                    if success:
+                        results[year_result] = data
+                        if show_progress:
+                            triplets = data.get('triplet_count', 0)
+                            vocab_size = data.get('vocab_size', 0)
+                            duration = data.get('total_duration_s', 0)
+                            print(f"✅ {year_result} complete ({completed_count}/{len(years)}): "
+                                  f"{triplets:,} triplets, {vocab_size:,} vocab, {duration:.1f}s")
+                    else:
+                        results[year_result] = {'error': data}
+                        if show_progress:
+                            print(f"❌ {year_result} failed ({completed_count}/{len(years)}): {data}")
+                            
+                except Exception as e:
+                    results[year] = {'error': str(e)}
+                    if show_progress:
+                        print(f"❌ {year} failed ({completed_count}/{len(years)}): {e}")
+        
+        parallel_duration = time.perf_counter() - start_time
+        
+        if show_progress:
+            print(f"\n🎯 Parallel processing completed in {parallel_duration:.1f}s")
+
     if show_summary:
         print(f"\n{'='*60}")
         print(f"🎉 Batch processing complete!")
@@ -503,8 +625,20 @@ def batch_prepare_training_data(
         if successful:
             total_triplets = sum(results[year]['triplet_count'] for year in successful)
             total_vocab = sum(results[year]['vocab_size'] for year in successful)
+            avg_duration = sum(results[year]['total_duration_s'] for year in successful) / len(successful)
+            
             print(f"   Total triplets: {total_triplets:,}")
             print(f"   Average vocab size: {total_vocab // len(successful):,}")
+            print(f"   Average time per year: {avg_duration:.1f}s")
+            
+            if use_multiprocessing and len(years) > 1:
+                # Calculate parallel efficiency
+                sequential_estimate = avg_duration * len(successful)
+                if 'parallel_duration' in locals():
+                    actual_speedup = sequential_estimate / parallel_duration
+                    efficiency = actual_speedup / min(max_workers, len(successful)) * 100
+                    print(f"   Parallel speedup: {actual_speedup:.1f}x")
+                    print(f"   Parallel efficiency: {efficiency:.1f}%")
         
         if failed:
             print(f"❌ Failed: {len(failed)} years: {', '.join(failed)}")
