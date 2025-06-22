@@ -1,8 +1,6 @@
 """
-TFRecord I/O utilities for word2vec skip-gram training data.
-
-Provides functions to save and load vocabulary tables and triplet datasets
-as TFRecord files for efficient training data management.
+TFRecord I/O utilities for word2GM skip-gram training data. Provides functions to save and load 
+vocabulary tables and triplet datasets as TFRecord files for efficient training data management.
 """
 
 import os
