@@ -95,12 +95,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Training data and artifacts - these are generated and should not be in version control
-training_data/
-*.tfrecord
-*.tfrecord.gz
-training_artifacts/
-
 # Large corpus files
 *.txt.gz
 *.txt
