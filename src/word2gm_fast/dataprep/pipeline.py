@@ -40,6 +40,7 @@ def prepare_training_data(
     output_subdir: Optional[str] = None,
     compress: bool = True,
     show_progress: bool = True,
+    show_summary: bool = True,
     cache_dataset: bool = True
 ) -> Tuple[str, dict]:
     """
@@ -62,6 +63,8 @@ def prepare_training_data(
         Whether to compress TFRecord files with GZIP
     show_progress : bool, default=True
         Whether to display progress and summary information
+    show_summary : bool, default=True
+        Whether to display a detailed summary of the pipeline execution
     cache_dataset : bool, default=True
         Whether to cache the filtered dataset for faster processing
         
@@ -123,7 +126,7 @@ def prepare_training_data(
     
     if show_progress:
         print(f"🚀 Starting Word2GM data preparation pipeline")
-        print(f"📁 Corpus: {corpus_file} ({file_size_mb:.1f} MB)")
+        print(f"📁 Corpus: {corpus_file} ({file_size_mb:.3f} MB)")
         print(f"💾 Output: {output_dir}")
         print()
     
@@ -141,7 +144,7 @@ def prepare_training_data(
     step_duration = time.perf_counter() - step_start
     
     if show_progress:
-        print(f"   ✅ Corpus filtered in {step_duration:.1f}s")
+        print(f"   ✅ Corpus filtered in {step_duration:.3f}s")
     
     # Step 2: Build vocabulary  
     if show_progress:
@@ -154,7 +157,7 @@ def prepare_training_data(
     step_duration = time.perf_counter() - step_start
     
     if show_progress:
-        print(f"   ✅ Vocabulary built: {vocab_size:,} words in {step_duration:.1f}s")
+        print(f"   ✅ Vocabulary built: {vocab_size:,} words in {step_duration:.3f}s")
     
     # Step 3: Generate training triplets
     if show_progress:
@@ -169,7 +172,7 @@ def prepare_training_data(
     step_duration = time.perf_counter() - step_start
     
     if show_progress:
-        print(f"   ✅ Generated {triplet_count:,} triplets in {step_duration:.1f}s")
+        print(f"   ✅ Generated {triplet_count:,} triplets in {step_duration:.3f}s")
     
     # Step 4: Save TFRecord artifacts
     if show_progress:
@@ -202,22 +205,22 @@ def prepare_training_data(
     vocab_size_mb = os.path.getsize(vocab_file) / 1024 / 1024 if os.path.exists(vocab_file) else 0
     total_artifact_size_mb = triplets_size_mb + vocab_size_mb
     
-    if show_progress:
-        print(f"   ✅ Artifacts saved in {step_duration:.1f}s")
+    if show_summary:
+        print(f"✅ Artifacts saved in {step_duration:.3f}s")
         print()
         print("📊 PIPELINE SUMMARY")
         print("=" * 50)
-        print(f"Corpus processed:   {file_size_mb:.1f} MB")
+        print(f"Corpus processed:   {file_size_mb:.3f} MB")
         print(f"Vocabulary size:    {vocab_size:,} words")
         print(f"Training triplets:  {triplet_count:,}")
-        print(f"Artifact size:      {total_artifact_size_mb:.1f} MB")
-        print(f"Compression ratio:  {file_size_mb / total_artifact_size_mb:.1f}x")
-        print(f"Total time:         {total_duration:.1f}s")
-        print(f"Processing rate:    {file_size_mb / total_duration:.1f} MB/s")
+        print(f"Artifact size:      {total_artifact_size_mb:.3f} MB")
+        print(f"Compression ratio:  {file_size_mb / total_artifact_size_mb:.3f}x")
+        print(f"Total time:         {total_duration:.3f}s")
+        print(f"Processing rate:    {file_size_mb / total_duration:.3f} MB/s")
         print()
         print("📁 Generated files:")
-        print(f"   🎯 {os.path.basename(triplets_file)} ({triplets_size_mb:.1f} MB)")
-        print(f"   📚 {os.path.basename(vocab_file)} ({vocab_size_mb:.1f} MB)")
+        print(f"   🎯 {os.path.basename(triplets_file)} ({triplets_size_mb:.3f} MB)")
+        print(f"   📚 {os.path.basename(vocab_file)} ({vocab_size_mb:.3f} MB)")
         print()
         print("🎉 Pipeline complete! Ready for model training.")
     
@@ -275,7 +278,8 @@ def batch_prepare_training_data(
     years: list,
     corpus_dir: str,
     compress: bool = True,
-    show_progress: bool = True
+    show_progress: bool = True,
+    show_summary: bool = True
 ) -> dict:
     """
     Prepare training data for multiple years in batch.
@@ -290,7 +294,8 @@ def batch_prepare_training_data(
         Whether to compress TFRecord files
     show_progress : bool, default=True
         Whether to show progress for each year
-        
+    show_summary : bool, default=True
+        Whether to display a summary of the batch processing
     Returns
     -------
     dict
@@ -334,7 +339,7 @@ def batch_prepare_training_data(
                 print(f"❌ Error processing {year}: {e}")
             results[year] = {'error': str(e)}
     
-    if show_progress:
+    if show_summary:
         print(f"\n{'='*60}")
         print(f"🎉 Batch processing complete!")
         print(f"{'='*60}")
