@@ -16,7 +16,7 @@ def write_triplets_to_tfrecord(
     dataset: tf.data.Dataset,
     output_path: str,
     compress: bool = False
-) -> None:
+) -> int:
     """
     Stream skip-gram triplets from a tf.data.Dataset into a TFRecord file.
 
@@ -28,6 +28,11 @@ def write_triplets_to_tfrecord(
         Path for the output TFRecord file.
     compress : bool, optional
         Whether to compress the file with GZIP. Default is False.
+
+    Returns
+    -------
+    int
+        Number of triplets written to the TFRecord file.
     """
     if compress and not output_path.endswith(".gz"):
         output_path += ".gz"
@@ -52,6 +57,53 @@ def write_triplets_to_tfrecord(
     duration = time.perf_counter() - start
     print(f"Write complete. Triplets written: {count:,}")
     print(f"Write time: {duration:.2f} sec")
+    
+    return count
+
+
+def write_triplets_to_tfrecord_silent(
+    dataset: tf.data.Dataset,
+    output_path: str,
+    compress: bool = False
+) -> int:
+    """
+    Stream skip-gram triplets from a tf.data.Dataset into a TFRecord file silently.
+    
+    Same as write_triplets_to_tfrecord but without print statements for use in 
+    pipeline contexts where output is suppressed.
+
+    Parameters
+    ----------
+    dataset : tf.data.Dataset
+        Dataset of (center, positive, negative) triplets as int64 tensors.
+    output_path : str
+        Path for the output TFRecord file.
+    compress : bool, optional
+        Whether to compress the file with GZIP. Default is False.
+
+    Returns
+    -------
+    int
+        Number of triplets written to the TFRecord file.
+    """
+    if compress and not output_path.endswith(".gz"):
+        output_path += ".gz"
+
+    options = tf.io.TFRecordOptions(compression_type="GZIP") if compress else None
+
+    count = 0
+    with tf.io.TFRecordWriter(output_path, options=options) as writer:
+        for triplet in dataset.as_numpy_iterator():
+            center, positive, negative = (int(x) for x in triplet)
+            example = tf.train.Example(features=tf.train.Features(feature={
+                'center': tf.train.Feature(int64_list=tf.train.Int64List(value=[center])),
+                'positive': tf.train.Feature(int64_list=tf.train.Int64List(value=[positive])),
+                'negative': tf.train.Feature(int64_list=tf.train.Int64List(value=[negative])),
+            }))
+            writer.write(example.SerializeToString())
+            count += 1
+    
+    return count
 
 
 def parse_triplet_example(example_proto: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
@@ -297,7 +349,7 @@ def save_pipeline_artifacts(
     Returns
     -------
     Dict[str, Union[str, int, bool]]
-        Paths to the saved files and metadata.
+        Paths to the saved files and metadata including triplet count.
     """
     os.makedirs(output_dir, exist_ok=True)
     
@@ -311,13 +363,14 @@ def save_pipeline_artifacts(
     # Save vocabulary
     write_vocab_to_tfrecord(vocab_table, vocab_path, compress=compress)
     
-    # Save triplets
-    write_triplets_to_tfrecord(triplets_ds, triplets_path, compress=compress)
+    # Save triplets and get count in one pass
+    triplet_count = write_triplets_to_tfrecord(triplets_ds, triplets_path, compress=compress)
     
     artifacts = {
         'vocab_path': vocab_path,
         'triplets_path': triplets_path,
         'vocab_size': int(vocab_table.size().numpy()),
+        'triplet_count': triplet_count,
         'compressed': compress,
         'output_dir': output_dir
     }
