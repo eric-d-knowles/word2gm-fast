@@ -9,7 +9,7 @@ import time
 from typing import Dict, List, Optional, Union
 
 
-def write_triplet_dataset_to_tfrecord(
+def write_triplets_to_tfrecord(
     dataset: tf.data.Dataset,
     output_path: str,
     compress: bool = False
@@ -298,7 +298,7 @@ def save_pipeline_artifacts(
     write_vocab_to_tfrecord(vocab_table, vocab_path, compress=compress)
     
     # Save triplets
-    write_triplet_dataset_to_tfrecord(triplets_ds, triplets_path, compress=compress)
+    write_triplets_to_tfrecord(triplets_ds, triplets_path, compress=compress)
     
     artifacts = {
         'vocab_path': vocab_path,
