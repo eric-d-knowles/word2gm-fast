@@ -70,7 +70,8 @@ def build_skipgram_triplets(
             num_contexts = tf.shape(valid_context_ids)[0]
             # Cast vocab_size to int32 to match minval dtype
             negatives = tf.random.uniform(
-                [num_contexts], minval=1, maxval=tf.cast(vocab_size, tf.int32), dtype=tf.int32
+                [num_contexts], minval=1, maxval=tf.cast(vocab_size, tf.int32), dtype=tf.int32,
+                seed=42  # Add seed for deterministic mode
             )
             
             # Broadcast center to match number of contexts

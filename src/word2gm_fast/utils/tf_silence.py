@@ -10,8 +10,16 @@ import os
 import sys
 
 
-def setup_tf_silence():
-    """Set up all TensorFlow environment variables for maximum silencing."""
+def setup_tf_silence(deterministic=False):
+    """
+    Set up all TensorFlow environment variables for maximum silencing.
+    
+    Parameters
+    ----------
+    deterministic : bool, optional
+        If True, enable deterministic operations (requires seeds for random ops).
+        Default False to avoid breaking existing random operations.
+    """
     # Core TensorFlow silencing
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Only FATAL errors
     os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN messages
@@ -20,7 +28,8 @@ def setup_tf_silence():
     # Advanced silencing
     os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices=false'
     os.environ['AUTOGRAPH_VERBOSITY'] = '0'
-    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    if deterministic:
+        os.environ['TF_DETERMINISTIC_OPS'] = '1'
     os.environ['TF_CPP_VMODULE'] = 'computation_placer=0,cuda_dnn=0,cuda_blas=0'
     os.environ['GRPC_VERBOSITY'] = 'ERROR'
     os.environ['GRPC_TRACE'] = ''
@@ -53,9 +62,16 @@ def log_tf_to_file(file='tf.log'):
             sys.stderr = old
 
 
-def import_tensorflow_silently():
-    """Import TensorFlow with complete silencing of all messages."""
-    setup_tf_silence()
+def import_tensorflow_silently(deterministic=False):
+    """
+    Import TensorFlow with complete silencing of all messages.
+    
+    Parameters
+    ----------
+    deterministic : bool, optional
+        If True, enable deterministic operations. Default False.
+    """
+    setup_tf_silence(deterministic=deterministic)
     
     with silence_stderr():
         import tensorflow as tf
@@ -79,28 +95,50 @@ def get_silence_status():
     return status
 
 
-def get_silence_env():
-    """Get environment variables for TensorFlow silencing in subprocesses."""
-    return {
+def get_silence_env(deterministic=False):
+    """
+    Get environment variables for TensorFlow silencing in subprocesses.
+    
+    Parameters
+    ----------
+    deterministic : bool, optional
+        If True, include deterministic operations. Default False.
+    """
+    env = {
         'TF_CPP_MIN_LOG_LEVEL': '3',
         'TF_ENABLE_ONEDNN_OPTS': '0',
         'CUDA_VISIBLE_DEVICES': '-1',
         'TF_XLA_FLAGS': '--tf_xla_enable_xla_devices=false',
         'AUTOGRAPH_VERBOSITY': '0',
-        'TF_DETERMINISTIC_OPS': '1',
         'TF_CPP_VMODULE': 'computation_placer=0,cuda_dnn=0,cuda_blas=0',
         'GRPC_VERBOSITY': 'ERROR',
         'GRPC_TRACE': ''
     }
+    
+    if deterministic:
+        env['TF_DETERMINISTIC_OPS'] = '1'
+    
+    return env
 
 
-def run_silent_subprocess(cmd, **kwargs):
-    """Run a subprocess with TensorFlow silencing environment variables."""
+def run_silent_subprocess(cmd, deterministic=False, **kwargs):
+    """
+    Run a subprocess with TensorFlow silencing environment variables.
+    
+    Parameters
+    ----------
+    cmd : list
+        Command to run as a list.
+    deterministic : bool, optional
+        If True, enable deterministic operations. Default False.
+    **kwargs
+        Additional arguments passed to subprocess.run.
+    """
     import subprocess
     
     # Get current environment and update with silencing vars
     env = os.environ.copy()
-    env.update(get_silence_env())
+    env.update(get_silence_env(deterministic=deterministic))
     
     # Set env in kwargs if not already provided
     if 'env' not in kwargs:
