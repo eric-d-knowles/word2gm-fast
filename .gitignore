@@ -100,6 +100,11 @@ dmypy.json
 *.txt
 corpus_data/
 
+# Training data artifacts (TFRecord files)
+training_data/
+*.tfrecord
+*.tfrecord.gz
+
 # Model checkpoints and logs
 checkpoints/
 logs/
