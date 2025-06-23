@@ -3,9 +3,24 @@ Complete data preparation pipeline for Word2GM skip-gram training data.
 
 This module provides a high-level interface to process corpus files and generate
 TFRecord training artifacts. It handles the entire pipeline from corpus filtering
-through TFRecord serialization with optimized performance and clean output.
-
-The pipeline uses an optimized direct-to-TFRecord approach that avoids unnecessary
+through TFRecord serialization with optimized performance and clean outdef batch_prepare_training_data(
+    corpus_dir: str,
+    years: list[str] | None = None,
+    year_range: str | None = None,
+    compress: bool = True,
+    show_progress: bool = True,
+    show_summary: bool = True,
+    max_workers: int def process_all_corpora(
+    corpus_dir: str,
+    year_range: str | None = None,
+    compress: bool = True,
+    max_workers: int | None = None,
+    show_progress: bool = True,
+    exclude_years: list[str] | None = None,
+    include_patterns: list[str] | None = None
+) -> dict: None,
+    use_multiprocessing: bool = True
+) -> dict: pipeline uses an optimized direct-to-TFRecord approach that avoids unnecessary
 dataset manifestation for maximum performance and memory efficiency.
 
 Usage:
@@ -31,8 +46,7 @@ Usage:
 import os
 import sys
 import time
-from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 from io import StringIO
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing as mp
@@ -48,7 +62,7 @@ def prepare_training_data(
     show_progress: bool = True,
     show_summary: bool = True,
     cache_dataset: bool = True
-) -> Tuple[str, dict]:
+) -> tuple[str, dict]:
     """
     Complete data preparation pipeline for Word2GM skip-gram training.
     
@@ -138,6 +152,9 @@ def prepare_training_data(
     
     # Get corpus information
     file_size_mb = os.path.getsize(corpus_path) / 1024 / 1024
+    
+    # Start total pipeline timing
+    start_total = time.perf_counter()
     
     if show_progress:
         print(f"Starting Word2GM data preparation pipeline")
@@ -240,7 +257,7 @@ def prepare_training_data(
     return output_dir, summary
 
 
-def get_corpus_years(corpus_dir: str) -> list:
+def get_corpus_years(corpus_dir: str) -> list[str]:
     """
     Get available corpus years from a directory.
     
@@ -309,11 +326,12 @@ def _process_single_year(args):
 
 def batch_prepare_training_data(
     corpus_dir: str,
-    years: list = None,
+    years: list[str] | None = None,
+    year_range: str | None = None,
     compress: bool = True,
     show_progress: bool = True,
     show_summary: bool = True,
-    max_workers: int = None,
+    max_workers: int | None = None,
     use_multiprocessing: bool = True
 ) -> dict:
     """
@@ -328,6 +346,10 @@ def batch_prepare_training_data(
     years : list, optional
         List of years to process (e.g., ["2018", "2019", "2020"]). 
         If None, automatically discovers and processes all available years.
+        Cannot be used together with year_range.
+    year_range : str, optional
+        Year range to process in format "start-end" (e.g., "1400-1700") or single year.
+        Cannot be used together with years.
     compress : bool, default=True
         Whether to compress TFRecord files
     show_progress : bool, default=True
@@ -346,6 +368,11 @@ def batch_prepare_training_data(
     dict
         Dictionary mapping years to their summary information
         
+    Raises
+    ------
+    ValueError
+        If both years and year_range are specified, or if year_range is invalid
+        
     Examples
     --------
     >>> # Process ALL available years in directory (auto-discovery)
@@ -361,6 +388,13 @@ def batch_prepare_training_data(
     ...     max_workers=4
     ... )
     >>> 
+    >>> # Process a year range
+    >>> results = batch_prepare_training_data(
+    ...     corpus_dir="/vast/edk202/NLP_corpora/...",
+    ...     year_range="1400-1700",
+    ...     max_workers=6
+    ... )
+    >>> 
     >>> # Process sequentially (for debugging)
     >>> results = batch_prepare_training_data(
     ...     corpus_dir="/vast/edk202/NLP_corpora/...",
@@ -368,6 +402,17 @@ def batch_prepare_training_data(
     ...     use_multiprocessing=False
     ... )
     """
+    # Validate mutually exclusive parameters
+    if years is not None and year_range is not None:
+        raise ValueError("Cannot specify both 'years' and 'year_range' parameters")
+    
+    # Parse year range if provided
+    if year_range is not None:
+        years = parse_year_range(year_range)
+        if show_progress:
+            print(f"Year range '{year_range}' expanded to {len(years)} years: {', '.join(years)}")
+            print()
+    
     # Auto-discover years if not specified
     if years is None:
         years = get_corpus_years(corpus_dir)
@@ -513,8 +558,8 @@ def process_all_corpora(
     compress: bool = True,
     max_workers: int = None,
     show_progress: bool = True,
-    exclude_years: list = None,
-    include_patterns: list = None
+    exclude_years: list[str] | None = None,
+    include_patterns: list[str] | None = None
 ) -> dict:
     """
     Convenience function to process ALL corpus files in a directory.
@@ -526,6 +571,9 @@ def process_all_corpora(
     ----------
     corpus_dir : str
         Directory containing corpus files
+    year_range : str, optional
+        Year range to process in format "start-end" (e.g., "1400-1700") or single year.
+        If specified, only processes years within this range that exist in the directory.
     compress : bool, default=True
         Whether to compress TFRecord files
     max_workers : int, optional
@@ -560,6 +608,13 @@ def process_all_corpora(
     ...     corpus_dir="/vast/edk202/NLP_corpora/.../data",
     ...     include_patterns=["18*", "19*"]
     ... )
+    
+    >>> # Process a specific year range
+    >>> results = process_all_corpora(
+    ...     corpus_dir="/vast/edk202/NLP_corpora/.../data",
+    ...     year_range="1400-1700",
+    ...     max_workers=8
+    ... )
     """
     # Get all available years
     all_years = get_corpus_years(corpus_dir)
@@ -567,6 +622,13 @@ def process_all_corpora(
     if not all_years:
         print(f"No corpus files found in {corpus_dir}")
         return {}
+    
+    # Apply year range filter first if specified
+    if year_range is not None:
+        requested_years = set(parse_year_range(year_range))
+        all_years = [year for year in all_years if year in requested_years]
+        if show_progress:
+            print(f"Year range '{year_range}' filtered to {len(all_years)} available years")
     
     # Apply filters
     years_to_process = all_years.copy()
@@ -695,3 +757,43 @@ def get_safe_worker_count(max_workers: int = None) -> int:
         else:
             # Conservative limit if no allocation detected
             return min(max_workers, resources['recommended_workers'])
+
+
+def parse_year_range(year_range: str) -> list[str]:
+    """
+    Parse a year range string into a list of years.
+    
+    Parameters
+    ----------
+    year_range : str
+        Year range in format "start-end" (e.g., "1400-1700") or single year
+        
+    Returns
+    -------
+    list[str]
+        List of years as strings
+        
+    Examples
+    --------
+    >>> parse_year_range("1400-1403")
+    ['1400', '1401', '1402', '1403']
+    >>> parse_year_range("2019")
+    ['2019']
+    """
+    if '-' in year_range:
+        start, end = year_range.split('-', 1)
+        try:
+            start_year = int(start.strip())
+            end_year = int(end.strip())
+            if start_year > end_year:
+                raise ValueError(f"Start year {start_year} cannot be greater than end year {end_year}")
+            return [str(year) for year in range(start_year, end_year + 1)]
+        except ValueError as e:
+            raise ValueError(f"Invalid year range '{year_range}': {e}")
+    else:
+        # Single year
+        try:
+            int(year_range.strip())  # Validate it's a number
+            return [year_range.strip()]
+        except ValueError:
+            raise ValueError(f"Invalid year '{year_range}': must be a valid 4-digit year")
