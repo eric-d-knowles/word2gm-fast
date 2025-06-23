@@ -554,8 +554,10 @@ def batch_prepare_training_data(
             print(f"   Average time per year: {avg_duration:.1f}s")
             
             # Overall triplets per second
-            if total_duration > 0:
-                triplets_per_second = total_triplets / total_duration
+            # Use parallel_duration if available (multiprocessing), otherwise total_duration
+            duration_for_rate = parallel_duration if 'parallel_duration' in locals() else total_duration
+            if duration_for_rate > 0:
+                triplets_per_second = total_triplets / duration_for_rate
                 print(f"   Overall triplets/second: {triplets_per_second:,.0f}")
             
             if use_multiprocessing and len(years) > 1:
