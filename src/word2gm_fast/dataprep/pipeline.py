@@ -5,6 +5,9 @@ This module provides a high-level interface to process corpus files and generate
 TFRecord training artifacts. It handles the entire pipeline from corpus filtering
 through TFRecord serialization with optimized performance and clean output.
 
+The pipeline uses an optimized direct-to-TFRecord approach that avoids unnecessary
+dataset manifestation for maximum performance and memory efficiency.
+
 Usage:
     from src.word2gm_fast.dataprep.pipeline import prepare_training_data
     
@@ -14,6 +17,15 @@ Usage:
         corpus_dir="/vast/edk202/NLP_corpora/...",
         output_subdir="2019_artifacts"  # Optional: creates nested directory
     )
+    
+    # Process multiple years in parallel
+    from src.word2gm_fast.dataprep.pipeline import batch_prepare_training_data
+    
+    # Auto-discover and process all corpus files
+    results = batch_prepare_training_data(corpus_dir)
+    
+    # Process specific years
+    results = batch_prepare_training_data(corpus_dir, years=["2018", "2019"])
 """
 
 import os
@@ -41,8 +53,8 @@ def prepare_training_data(
     Complete data preparation pipeline for Word2GM skip-gram training.
     
     Takes a preprocessed corpus file and generates optimized TFRecord artifacts
-    for efficient model training. All processing uses TensorFlow-native operations
-    for scalability and performance.
+    for efficient model training. Uses optimized direct-to-TFRecord approach
+    for maximum performance by skipping unnecessary dataset manifestation.
     
     Parameters
     ----------
@@ -104,7 +116,7 @@ def prepare_training_data(
     from .corpus_to_dataset import make_dataset
     from .index_vocab import make_vocab
     from .dataset_to_triplets import build_skipgram_triplets
-    from .tfrecord_io import save_pipeline_artifacts
+    from .tfrecord_io import write_triplets_to_tfrecord_silent, write_vocab_to_tfrecord
     
     # Validate inputs
     corpus_path = os.path.join(corpus_dir, corpus_file)
@@ -128,17 +140,14 @@ def prepare_training_data(
     file_size_mb = os.path.getsize(corpus_path) / 1024 / 1024
     
     if show_progress:
-        print(f"🚀 Starting Word2GM data preparation pipeline")
-        print(f"📁 Corpus: {corpus_file} ({file_size_mb:.3f} MB)")
-        print(f"💾 Output: {output_dir}")
+        print(f"Starting Word2GM data preparation pipeline")
+        print(f"Corpus: {corpus_file} ({file_size_mb:.3f} MB)")
+        print(f"Output: {output_dir}")
         print()
-    
-    # Start timing
-    start_total = time.perf_counter()
     
     # Step 1: Load and filter corpus
     if show_progress:
-        print("🔄 Step 1/4: Loading and filtering corpus...")
+        print("Step 1/3: Loading and filtering corpus...")
     
     step_start = time.perf_counter()
     dataset, _ = make_dataset(corpus_path, show_summary=False)
@@ -147,11 +156,11 @@ def prepare_training_data(
     step_duration = time.perf_counter() - step_start
     
     if show_progress:
-        print(f"   ✅ Corpus filtered in {step_duration:.3f}s")
+        print(f"   Corpus filtered in {step_duration:.3f}s")
     
     # Step 2: Build vocabulary  
     if show_progress:
-        print("🔄 Step 2/4: Building vocabulary...")
+        print("Step 2/3: Building vocabulary...")
         
     step_start = time.perf_counter()
     vocab_table = make_vocab(dataset)
@@ -160,190 +169,16 @@ def prepare_training_data(
     step_duration = time.perf_counter() - step_start
     
     if show_progress:
-        print(f"   ✅ Vocabulary built: {vocab_size:,} words in {step_duration:.3f}s")
+        print(f"   Vocabulary built: {vocab_size:,} words in {step_duration:.3f}s")
     
-    # Step 3: Generate training triplets
+    # Step 3: Generate triplets and save directly to TFRecord (optimized approach)
     if show_progress:
-        print("🔄 Step 3/4: Generating skip-gram triplets...")
-        
-    step_start = time.perf_counter()
-    triplets_ds = build_skipgram_triplets(dataset, vocab_table)
-    step_duration = time.perf_counter() - step_start
-    
-    if show_progress:
-        print(f"   ✅ Generated triplets dataset in {step_duration:.3f}s")
-    
-    # Step 4: Save TFRecord artifacts (count triplets during writing)
-    if show_progress:
-        print("🔄 Step 4/4: Saving TFRecord artifacts...")
-        
-    step_start = time.perf_counter()
-    
-    # Suppress verbose output during save
-    old_stdout = sys.stdout
-    sys.stdout = StringIO()
-    try:
-        artifacts = save_pipeline_artifacts(
-            dataset=dataset,
-            vocab_table=vocab_table,
-            triplets_ds=triplets_ds,
-            output_dir=output_dir,
-            compress=compress
-        )
-        # Get triplet count from artifacts (counted during TFRecord writing)
-        triplet_count = artifacts['triplet_count']
-    finally:
-        sys.stdout = old_stdout
-    
-    step_duration = time.perf_counter() - step_start
-    total_duration = time.perf_counter() - start_total
-    
-    # Calculate file sizes
-    triplets_file = os.path.join(output_dir, "triplets.tfrecord.gz" if compress else "triplets.tfrecord")
-    vocab_file = os.path.join(output_dir, "vocab.tfrecord.gz" if compress else "vocab.tfrecord")
-    
-    triplets_size_mb = os.path.getsize(triplets_file) / 1024 / 1024 if os.path.exists(triplets_file) else 0
-    vocab_size_mb = os.path.getsize(vocab_file) / 1024 / 1024 if os.path.exists(vocab_file) else 0
-    total_artifact_size_mb = triplets_size_mb + vocab_size_mb
-    
-    if show_summary:
-        print(f"✅ Artifacts saved in {step_duration:.3f}s")
-        print()
-        print("📊 PIPELINE SUMMARY")
-        print("=" * 50)
-        print(f"Corpus processed:   {file_size_mb:.3f} MB")
-        print(f"Vocabulary size:    {vocab_size:,} words")
-        print(f"Training triplets:  {triplet_count:,}")
-        print(f"Artifact size:      {total_artifact_size_mb:.3f} MB")
-        print(f"Compression ratio:  {file_size_mb / total_artifact_size_mb:.3f}x")
-        print(f"Total time:         {total_duration:.3f}s")
-        print(f"Processing rate:    {file_size_mb / total_duration:.3f} MB/s")
-        print(f"Triplet rate:       {triplet_count / total_duration:.3f} MB/s")
-        print()
-        print("📁 Generated files:")
-        print(f"   🎯 {os.path.basename(triplets_file)} ({triplets_size_mb:.3f} MB)")
-        print(f"   📚 {os.path.basename(vocab_file)} ({vocab_size_mb:.3f} MB)")
-        print()
-        print("🎉 Pipeline complete! Ready for model training.")
-    
-    # Create summary dictionary
-    summary = {
-        'corpus_file': corpus_file,
-        'corpus_size_mb': file_size_mb,
-        'vocab_size': vocab_size,
-        'triplet_count': triplet_count,
-        'artifacts_size_mb': total_artifact_size_mb,
-        'compression_ratio': file_size_mb / total_artifact_size_mb if total_artifact_size_mb > 0 else 0,
-        'total_duration_s': total_duration,
-        'processing_rate_mb_s': file_size_mb / total_duration,
-        'triplets_file': triplets_file,
-        'vocab_file': vocab_file,
-        'output_dir': output_dir
-    }
-    
-    return output_dir, summary
-
-
-def prepare_training_data_fast(
-    corpus_file: str,
-    corpus_dir: str,
-    output_subdir: Optional[str] = None,
-    compress: bool = True,
-    show_progress: bool = True,
-    show_summary: bool = True,
-    cache_dataset: bool = True
-) -> Tuple[str, dict]:
-    """
-    Optimized data preparation pipeline that skips triplet manifestation.
-    
-    This version writes directly to TFRecord without first manifesting the entire
-    triplets dataset in memory. For large corpora, this can save significant time
-    by avoiding the double iteration over triplets.
-    
-    Parameters are identical to prepare_training_data().
-    
-    Returns
-    -------
-    output_dir : str
-        Path to the directory containing generated artifacts
-    summary : dict
-        Dictionary with pipeline statistics and file information
-    """
-    
-    # Import TensorFlow and pipeline components inside function to avoid multiprocessing issues
-    from ..utils import import_tensorflow_silently
-    tf = import_tensorflow_silently(deterministic=False)
-    
-    from .corpus_to_dataset import make_dataset
-    from .index_vocab import make_vocab
-    from .dataset_to_triplets import build_skipgram_triplets
-    from .tfrecord_io import write_triplets_to_tfrecord_silent, write_vocab_to_tfrecord
-    
-    # Validate inputs (same as original)
-    corpus_path = os.path.join(corpus_dir, corpus_file)
-    if not os.path.exists(corpus_path):
-        raise FileNotFoundError(f"Corpus file not found: {corpus_path}")
-    
-    if not os.path.isdir(corpus_dir):
-        raise ValueError(f"Corpus directory not accessible: {corpus_dir}")
-    
-    # Set up output directory
-    if output_subdir:
-        output_dir = os.path.join(corpus_dir, output_subdir)
-    else:
-        output_dir = os.path.join(corpus_dir, "training_artifacts")
-    
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Get corpus information
-    file_size_mb = os.path.getsize(corpus_path) / 1024 / 1024
-    
-    if show_progress:
-        print(f"🚀 Starting Word2GM data preparation pipeline (FAST mode)")
-        print(f"📁 Corpus: {corpus_file} ({file_size_mb:.3f} MB)")
-        print(f"💾 Output: {output_dir}")
-        print("⚡ Skip manifestation: ON")
-        print()
-    
-    # Start timing
-    start_total = time.perf_counter()
-    
-    # Step 1: Load and filter corpus
-    if show_progress:
-        print("🔄 Step 1/3: Loading and filtering corpus...")
-    
-    step_start = time.perf_counter()
-    dataset, _ = make_dataset(corpus_path, show_summary=False)
-    if cache_dataset:
-        dataset = dataset.cache()
-    step_duration = time.perf_counter() - step_start
-    
-    if show_progress:
-        print(f"   ✅ Corpus filtered in {step_duration:.3f}s")
-    
-    # Step 2: Build vocabulary  
-    if show_progress:
-        print("🔄 Step 2/3: Building vocabulary...")
-        
-    step_start = time.perf_counter()
-    vocab_table = make_vocab(dataset)
-    vocab_export = vocab_table.export()
-    vocab_size = len(vocab_export[0].numpy())
-    step_duration = time.perf_counter() - step_start
-    
-    if show_progress:
-        print(f"   ✅ Vocabulary built: {vocab_size:,} words in {step_duration:.3f}s")
-    
-    # Step 3: Generate triplets and save directly to TFRecord
-    if show_progress:
-        print("🔄 Step 3/3: Generating triplets and saving to TFRecord...")
+        print("Step 3/3: Generating triplets and saving to TFRecord...")
         
     step_start = time.perf_counter()
     triplets_ds = build_skipgram_triplets(dataset, vocab_table)
     
-    # Save artifacts and get triplet count in one pass
-    from .tfrecord_io import write_triplets_to_tfrecord_silent, write_vocab_to_tfrecord
-    
+    # Save artifacts and get triplet count in one pass (optimized: no dataset manifestation)
     ext = ".tfrecord.gz" if compress else ".tfrecord"
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
@@ -354,7 +189,7 @@ def prepare_training_data_fast(
     try:
         # Save vocab
         write_vocab_to_tfrecord(vocab_table, vocab_path, compress=compress)
-        # Save triplets and get count
+        # Save triplets and get count (direct streaming to TFRecord)
         triplet_count = write_triplets_to_tfrecord_silent(triplets_ds, triplets_path, compress=compress)
     finally:
         sys.stdout = old_stdout
@@ -368,9 +203,9 @@ def prepare_training_data_fast(
     total_artifact_size_mb = triplets_size_mb + vocab_size_mb
     
     if show_summary:
-        print(f"✅ Triplets generated and saved in {step_duration:.3f}s")
+        print(f"Triplets generated and saved in {step_duration:.3f}s")
         print()
-        print("📊 PIPELINE SUMMARY (FAST MODE)")
+        print("PIPELINE SUMMARY")
         print("=" * 50)
         print(f"Corpus processed:   {file_size_mb:.3f} MB")
         print(f"Vocabulary size:    {vocab_size:,} words")
@@ -380,12 +215,12 @@ def prepare_training_data_fast(
         print(f"Total time:         {total_duration:.3f}s")
         print(f"Processing rate:    {file_size_mb / total_duration:.3f} MB/s")
         print()
-        print("📁 Generated files:")
-        print(f"   🎯 {os.path.basename(triplets_path)} ({triplets_size_mb:.3f} MB)")
-        print(f"   📚 {os.path.basename(vocab_path)} ({vocab_size_mb:.3f} MB)")
+        print("Generated files:")
+        print(f"   {os.path.basename(triplets_path)} ({triplets_size_mb:.3f} MB)")
+        print(f"   {os.path.basename(vocab_path)} ({vocab_size_mb:.3f} MB)")
         print()
-        print("⚡ Fast mode: Skipped dataset manifestation")
-        print("🎉 Pipeline complete! Ready for model training.")
+        print("Optimized: Direct-to-TFRecord streaming (no dataset manifestation)")
+        print("Pipeline complete! Ready for model training.")
     
     # Create summary dictionary
     summary = {
@@ -399,8 +234,7 @@ def prepare_training_data_fast(
         'processing_rate_mb_s': file_size_mb / total_duration,
         'triplets_file': triplets_path,
         'vocab_file': vocab_path,
-        'output_dir': output_dir,
-        'fast_mode': True
+        'output_dir': output_dir
     }
     
     return output_dir, summary
@@ -474,8 +308,8 @@ def _process_single_year(args):
 
 
 def batch_prepare_training_data(
-    years: list,
     corpus_dir: str,
+    years: list = None,
     compress: bool = True,
     show_progress: bool = True,
     show_summary: bool = True,
@@ -485,12 +319,15 @@ def batch_prepare_training_data(
     """
     Prepare training data for multiple years in batch with optional parallel processing.
     
+    If no years are specified, automatically processes all available corpus files in the directory.
+    
     Parameters
     ----------
-    years : list
-        List of years to process (e.g., ["2018", "2019", "2020"])
     corpus_dir : str
         Directory containing corpus files
+    years : list, optional
+        List of years to process (e.g., ["2018", "2019", "2020"]). 
+        If None, automatically discovers and processes all available years.
     compress : bool, default=True
         Whether to compress TFRecord files
     show_progress : bool, default=True
@@ -498,7 +335,8 @@ def batch_prepare_training_data(
     show_summary : bool, default=True
         Whether to display a summary of the batch processing
     max_workers : int, optional
-        Maximum number of parallel workers. If None, uses min(cpu_count(), len(years))
+        Maximum number of parallel workers. If None, uses cluster-aware detection
+        with get_safe_worker_count() to respect actual resource allocation
     use_multiprocessing : bool, default=True
         Whether to use multiprocessing for parallel year processing.
         If False, processes years sequentially.
@@ -510,20 +348,44 @@ def batch_prepare_training_data(
         
     Examples
     --------
-    >>> # Process multiple years in parallel (default)
+    >>> # Process ALL available years in directory (auto-discovery)
     >>> results = batch_prepare_training_data(
-    ...     years=["2018", "2019", "2020"],
     ...     corpus_dir="/vast/edk202/NLP_corpora/...",
+    ...     max_workers=8
+    ... )
+    >>> 
+    >>> # Process specific years only
+    >>> results = batch_prepare_training_data(
+    ...     corpus_dir="/vast/edk202/NLP_corpora/...",
+    ...     years=["2018", "2019", "2020"],
     ...     max_workers=4
     ... )
     >>> 
     >>> # Process sequentially (for debugging)
     >>> results = batch_prepare_training_data(
-    ...     years=["2018", "2019"],
     ...     corpus_dir="/vast/edk202/NLP_corpora/...",
+    ...     years=["2018", "2019"],
     ...     use_multiprocessing=False
     ... )
     """
+    # Auto-discover years if not specified
+    if years is None:
+        years = get_corpus_years(corpus_dir)
+        if show_progress:
+            print(f"Auto-discovered {len(years)} corpus files in directory")
+            print(f"Years to process: {', '.join(sorted(years))}")
+            print()
+    
+    # Validate that we have years to process
+    if not years:
+        print("No corpus files found in directory or no years specified")
+        return {}
+    
+    if show_progress and len(years) > 10:
+        print(f"Processing {len(years)} years - this may take a while!")
+        print(f"Consider using fewer max_workers or processing in smaller batches for very large datasets")
+        print()
+    
     results = {}
     
     if not use_multiprocessing or len(years) == 1:
@@ -531,7 +393,7 @@ def batch_prepare_training_data(
         for i, year in enumerate(years, 1):
             if show_progress:
                 print(f"\n{'='*60}")
-                print(f"📅 Processing year {year} ({i}/{len(years)})")
+                print(f"Processing year {year} ({i}/{len(years)})")
                 print(f"{'='*60}")
             
             try:
@@ -550,21 +412,21 @@ def batch_prepare_training_data(
                 
             except Exception as e:
                 if show_progress:
-                    print(f"❌ Error processing {year}: {e}")
+                    print(f"Error processing {year}: {e}")
                 results[year] = {'error': str(e)}
     
     else:
         # Parallel processing using multiprocessing
         if max_workers is None:
-            max_workers = min(mp.cpu_count(), len(years))
+            max_workers = min(get_safe_worker_count(), len(years))
         
         if show_progress:
             print(f"\n{'='*60}")
-            print(f"🚀 PARALLEL BATCH PROCESSING")
+            print(f"PARALLEL BATCH PROCESSING")
             print(f"{'='*60}")
-            print(f"📅 Processing {len(years)} years: {', '.join(years)}")
-            print(f"💻 Using {max_workers} parallel workers")
-            print(f"⚡ Estimated speedup: {min(max_workers, len(years)):.1f}x")
+            print(f"Processing {len(years)} years: {', '.join(years)}")
+            print(f"Using {max_workers} parallel workers")
+            print(f"Estimated speedup: {min(max_workers, len(years)):.1f}x")
             print(f"{'='*60}")
         
         # Prepare arguments for worker processes
@@ -595,33 +457,33 @@ def batch_prepare_training_data(
                             triplets = data.get('triplet_count', 0)
                             vocab_size = data.get('vocab_size', 0)
                             duration = data.get('total_duration_s', 0)
-                            print(f"✅ {year_result} complete ({completed_count}/{len(years)}): "
+                            print(f"{year_result} complete ({completed_count}/{len(years)}): "
                                   f"{triplets:,} triplets, {vocab_size:,} vocab, {duration:.1f}s")
                     else:
                         results[year_result] = {'error': data}
                         if show_progress:
-                            print(f"❌ {year_result} failed ({completed_count}/{len(years)}): {data}")
+                            print(f"{year_result} failed ({completed_count}/{len(years)}): {data}")
                             
                 except Exception as e:
                     results[year] = {'error': str(e)}
                     if show_progress:
-                        print(f"❌ {year} failed ({completed_count}/{len(years)}): {e}")
+                        print(f"{year} failed ({completed_count}/{len(years)}): {e}")
         
         parallel_duration = time.perf_counter() - start_time
         
         if show_progress:
-            print(f"\n🎯 Parallel processing completed in {parallel_duration:.1f}s")
+            print(f"\nParallel processing completed in {parallel_duration:.1f}s")
 
     if show_summary:
         print(f"\n{'='*60}")
-        print(f"🎉 Batch processing complete!")
+        print(f"Batch processing complete!")
         print(f"{'='*60}")
         
         # Summary table
         successful = [year for year, result in results.items() if 'error' not in result]
         failed = [year for year, result in results.items() if 'error' in result]
         
-        print(f"✅ Successful: {len(successful)} years")
+        print(f"Successful: {len(successful)} years")
         if successful:
             total_triplets = sum(results[year]['triplet_count'] for year in successful)
             total_vocab = sum(results[year]['vocab_size'] for year in successful)
@@ -641,124 +503,195 @@ def batch_prepare_training_data(
                     print(f"   Parallel efficiency: {efficiency:.1f}%")
         
         if failed:
-            print(f"❌ Failed: {len(failed)} years: {', '.join(failed)}")
+            print(f"Failed: {len(failed)} years: {', '.join(failed)}")
     
     return results
 
 
-def estimate_fast_mode_savings(corpus_file: str, corpus_dir: str) -> dict:
+def process_all_corpora(
+    corpus_dir: str,
+    compress: bool = True,
+    max_workers: int = None,
+    show_progress: bool = True,
+    exclude_years: list = None,
+    include_patterns: list = None
+) -> dict:
     """
-    Estimate potential time savings from using fast mode (no manifestation).
+    Convenience function to process ALL corpus files in a directory.
     
-    This function analyzes a corpus to estimate how much time could be saved
-    by skipping dataset manifestation and writing directly to TFRecord.
+    This is equivalent to calling batch_prepare_training_data() with years=None,
+    but provides additional filtering options for large directories.
     
     Parameters
     ----------
-    corpus_file : str
-        Name of the corpus file to analyze
-    corpus_dir : str  
-        Directory containing the corpus file
+    corpus_dir : str
+        Directory containing corpus files
+    compress : bool, default=True
+        Whether to compress TFRecord files
+    max_workers : int, optional
+        Maximum number of parallel workers. If None, auto-detects optimal number
+        using cluster-aware detection that respects actual resource allocation
+    show_progress : bool, default=True
+        Whether to show progress updates
+    exclude_years : list, optional
+        List of years to skip (e.g., ["1800", "1801"] to skip early years)
+    include_patterns : list, optional
+        List of filename patterns to include (e.g., ["18*", "19*"] for 1800s and 1900s)
         
     Returns
     -------
     dict
-        Estimates including corpus stats and projected time savings
+        Dictionary mapping years to their summary information
+        
+    Examples
+    --------
+    >>> # Process ALL corpus files in directory
+    >>> results = process_all_corpora("/vast/edk202/NLP_corpora/.../data")
+    
+    >>> # Process all except early years
+    >>> results = process_all_corpora(
+    ...     corpus_dir="/vast/edk202/NLP_corpora/.../data",
+    ...     exclude_years=["1800", "1801", "1802"],
+    ...     max_workers=8
+    ... )
+    
+    >>> # Process only 1800s and 1900s
+    >>> results = process_all_corpora(
+    ...     corpus_dir="/vast/edk202/NLP_corpora/.../data",
+    ...     include_patterns=["18*", "19*"]
+    ... )
     """
-    corpus_path = os.path.join(corpus_dir, corpus_file)
-    if not os.path.exists(corpus_path):
-        raise FileNotFoundError(f"Corpus file not found: {corpus_path}")
+    # Get all available years
+    all_years = get_corpus_years(corpus_dir)
     
-    # Get basic file info
-    file_size_mb = os.path.getsize(corpus_path) / 1024 / 1024
+    if not all_years:
+        print(f"No corpus files found in {corpus_dir}")
+        return {}
     
-    print(f"📊 Analyzing corpus: {corpus_file} ({file_size_mb:.3f} MB)")
-    print()
+    # Apply filters
+    years_to_process = all_years.copy()
     
-    # Quick corpus analysis - sample first 10k lines to estimate
-    import time
+    # Apply include patterns
+    if include_patterns:
+        import fnmatch
+        filtered_years = []
+        for year in years_to_process:
+            if any(fnmatch.fnmatch(year, pattern) for pattern in include_patterns):
+                filtered_years.append(year)
+        years_to_process = filtered_years
+        
+        if show_progress:
+            print(f"Include patterns {include_patterns} matched {len(years_to_process)} years")
     
-    start = time.perf_counter()
-    with open(corpus_path, 'r') as f:
-        sample_lines = []
-        for i, line in enumerate(f):
-            if i >= 10000:  # Sample first 10k lines
-                break
-            sample_lines.append(line.strip())
+    # Apply exclude list
+    if exclude_years:
+        years_to_process = [year for year in years_to_process if year not in exclude_years]
+        
+        if show_progress:
+            print(f"Excluding {len(exclude_years)} years: {', '.join(exclude_years)}")
     
-    # Estimate line stats
-    total_lines_estimate = file_size_mb * 1024 * 1024 // 80  # Rough estimate: ~80 bytes/line
-    avg_line_length = sum(len(line) for line in sample_lines) / len(sample_lines) if sample_lines else 80
+    if not years_to_process:
+        print("No corpus files remain after filtering")
+        return {}
     
-    # Quick vocabulary estimate from sample
-    from ..utils import import_tensorflow_silently
-    tf = import_tensorflow_silently(deterministic=False)
-    from .corpus_to_dataset import make_dataset
-    from .index_vocab import make_vocab
-    from .dataset_to_triplets import build_skipgram_triplets
+    # Auto-set reasonable max_workers for large datasets using cluster-aware detection
+    if max_workers is None:
+        base_workers = get_safe_worker_count()
+        
+        if len(years_to_process) <= 4:
+            max_workers = min(base_workers, len(years_to_process))
+        elif len(years_to_process) <= 20:
+            max_workers = min(base_workers // 2, 8)  # Conservative for medium datasets
+        else:
+            max_workers = min(base_workers // 3, 6)  # Very conservative for large datasets
+            
+        if show_progress:
+            print(f"Auto-selected {max_workers} workers for {len(years_to_process)} years")
     
-    # Create small sample dataset 
-    sample_dataset = tf.data.Dataset.from_tensor_slices(sample_lines[:1000])
-    vocab_table = make_vocab(sample_dataset)
-    vocab_size_estimate = int(vocab_table.size().numpy())
+    if show_progress:
+        print(f"Processing {len(years_to_process)} corpus files with {max_workers} workers")
+        total_estimated_time = len(years_to_process) * 45 / max_workers  # ~45s per year estimate
+        print(f"Estimated completion time: {total_estimated_time/60:.1f} minutes")
+        print()
     
-    # Estimate triplets per line (typically 2-4 for 5-grams)
-    sample_triplets = build_skipgram_triplets(sample_dataset, vocab_table)
-    sample_triplet_count = sum(1 for _ in sample_triplets.take(100).as_numpy_iterator()) 
-    triplets_per_line = sample_triplet_count / min(100, len(sample_lines))
+    # Process the filtered years
+    return batch_prepare_training_data(
+        corpus_dir=corpus_dir,
+        years=years_to_process,
+        compress=compress,
+        show_progress=show_progress,
+        show_summary=True,
+        max_workers=max_workers,
+        use_multiprocessing=True
+    )
+
+
+def detect_cluster_resources() -> dict:
+    """
+    Detect actual allocated cluster resources vs hardware capabilities.
     
-    # Total estimates
-    estimated_total_triplets = int(total_lines_estimate * triplets_per_line)
+    Returns
+    -------
+    dict
+        Dictionary with detected and allocated CPU information
+    """
+    import os
+    import multiprocessing as mp
     
-    # Time estimates based on empirical measurements
-    # These are rough estimates from typical performance
-    manifestation_rate_triplets_per_sec = 50000  # Typical rate for iteration 
-    tfrecord_write_rate_triplets_per_sec = 25000  # Typical rate for TFRecord writing
-    
-    # Time for manifestation step
-    manifestation_time_s = estimated_total_triplets / manifestation_rate_triplets_per_sec
-    
-    # Time for TFRecord writing (happens in both modes)
-    tfrecord_write_time_s = estimated_total_triplets / tfrecord_write_rate_triplets_per_sec
-    
-    # Fast mode skips manifestation
-    time_saved_s = manifestation_time_s
-    time_saved_percent = (time_saved_s / (manifestation_time_s + tfrecord_write_time_s)) * 100
-    
-    analysis_time = time.perf_counter() - start
-    
-    results = {
-        'corpus_file': corpus_file,
-        'corpus_size_mb': file_size_mb,
-        'estimated_total_lines': int(total_lines_estimate),
-        'estimated_vocab_size': vocab_size_estimate,
-        'estimated_total_triplets': estimated_total_triplets,
-        'estimated_manifestation_time_s': manifestation_time_s,
-        'estimated_tfrecord_write_time_s': tfrecord_write_time_s,
-        'estimated_time_saved_s': time_saved_s,
-        'estimated_time_saved_percent': time_saved_percent,
-        'analysis_time_s': analysis_time
+    result = {
+        'detected_cpus': mp.cpu_count(),
+        'allocated_cpus': None,
+        'scheduler': None,
+        'recommended_workers': None
     }
     
-    print("🔍 ANALYSIS RESULTS")
-    print("=" * 40)
-    print(f"Estimated total lines:    {int(total_lines_estimate):,}")
-    print(f"Estimated vocabulary:     {vocab_size_estimate:,} words")
-    print(f"Estimated triplets:       {estimated_total_triplets:,}")
-    print()
-    print("⏱️  TIME ESTIMATES")
-    print("=" * 40)
-    print(f"Manifestation step:       {manifestation_time_s:.1f}s")
-    print(f"TFRecord writing:         {tfrecord_write_time_s:.1f}s")
-    print(f"Total (standard mode):    {manifestation_time_s + tfrecord_write_time_s:.1f}s")
-    print(f"Total (fast mode):        {tfrecord_write_time_s:.1f}s")
-    print()
-    print("💾 FAST MODE SAVINGS")
-    print("=" * 40)
-    print(f"Time saved:               {time_saved_s:.1f}s ({time_saved_s/60:.1f} min)")
-    print(f"Speedup:                  {time_saved_percent:.1f}%")
-    print()
-    print("📝 Note: These are rough estimates based on typical performance.")
-    print("   Actual results may vary depending on hardware and corpus characteristics.")
+    # Check various cluster schedulers
+    if os.environ.get('SLURM_CPUS_PER_TASK'):
+        result['allocated_cpus'] = int(os.environ['SLURM_CPUS_PER_TASK'])
+        result['scheduler'] = 'SLURM'
+    elif os.environ.get('SLURM_NTASKS'):
+        result['allocated_cpus'] = int(os.environ['SLURM_NTASKS'])
+        result['scheduler'] = 'SLURM'
+    elif os.environ.get('PBS_NUM_PPN'):
+        result['allocated_cpus'] = int(os.environ['PBS_NUM_PPN'])
+        result['scheduler'] = 'PBS/Torque'
+    elif os.environ.get('LSB_DJOB_NUMPROC'):
+        result['allocated_cpus'] = int(os.environ['LSB_DJOB_NUMPROC'])
+        result['scheduler'] = 'LSF'
     
-    return results
+    # Recommend safe number of workers
+    if result['allocated_cpus']:
+        # Use allocated resources
+        result['recommended_workers'] = result['allocated_cpus']
+    else:
+        # Conservative fallback - assume hyperthreading and leave some headroom
+        result['recommended_workers'] = max(1, result['detected_cpus'] // 4)
+    
+    return result
+
+
+def get_safe_worker_count(max_workers: int = None) -> int:
+    """
+    Get a safe number of workers considering cluster allocation.
+    
+    Parameters
+    ----------
+    max_workers : int, optional
+        Maximum desired workers. If None, uses detected allocation.
+        
+    Returns
+    -------
+    int
+        Safe number of workers to use
+    """
+    resources = detect_cluster_resources()
+    
+    if max_workers is None:
+        return resources['recommended_workers']
+    else:
+        # Don't exceed allocation
+        if resources['allocated_cpus']:
+            return min(max_workers, resources['allocated_cpus'])
+        else:
+            # Conservative limit if no allocation detected
+            return min(max_workers, resources['recommended_workers'])
