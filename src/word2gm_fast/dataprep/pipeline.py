@@ -409,9 +409,6 @@ def batch_prepare_training_data(
     # Parse year range if provided
     if year_range is not None:
         years = parse_year_range(year_range)
-        if show_progress:
-            print(f"Year range '{year_range}' expanded to {len(years)} years: {', '.join(years)}")
-            print()
     
     # Auto-discover years if not specified
     if years is None:
@@ -421,20 +418,36 @@ def batch_prepare_training_data(
             print(f"Years to process: {', '.join(sorted(years))}")
             print()
     
+    # Filter years to only include those with existing corpus files
+    if years:
+        existing_years = []
+        missing_years = []
+        
+        for year in years:
+            corpus_path = os.path.join(corpus_dir, f"{year}.txt")
+            if os.path.exists(corpus_path):
+                existing_years.append(year)
+            else:
+                missing_years.append(year)
+        
+        # Show summary of missing years if any
+        if missing_years and show_progress:
+            if len(missing_years) <= 5:
+                print(f"Skipping {len(missing_years)} missing years: {', '.join(sorted(missing_years))}")
+            else:
+                print(f"Skipping {len(missing_years)} missing years (showing first 5): {', '.join(sorted(missing_years)[:5])}, ...")
+            print()
+        
+        years = existing_years
+    
     # Validate that we have years to process
     if not years:
         print("No corpus files found in directory or no years specified")
         return {}
     
-    if show_progress and len(years) > 10:
-        print(f"Processing {len(years)} years - this may take a while!")
-        print(f"Consider using fewer max_workers or processing in smaller batches for very large datasets")
-        print()
-    
     results = {}
-    
     if not use_multiprocessing or len(years) == 1:
-        # Sequential processing (original implementation)
+        # Sequential processing
         for i, year in enumerate(years, 1):
             if show_progress:
                 print(f"\n{'='*60}")
@@ -450,7 +463,8 @@ def batch_prepare_training_data(
                     corpus_dir=corpus_dir,
                     output_subdir=output_subdir,
                     compress=compress,
-                    show_progress=show_progress
+                    show_progress=show_progress,
+                    show_summary=False  # Suppress individual summaries in batch mode
                 )
                 
                 results[year] = summary
@@ -459,7 +473,7 @@ def batch_prepare_training_data(
                 if show_progress:
                     print(f"Error processing {year}: {e}")
                 results[year] = {'error': str(e)}
-    
+
     else:
         # Parallel processing using multiprocessing
         if max_workers is None:
@@ -469,7 +483,7 @@ def batch_prepare_training_data(
             print(f"\n{'='*60}")
             print(f"PARALLEL BATCH PROCESSING")
             print(f"{'='*60}")
-            print(f"Processing {len(years)} years: {', '.join(years)}")
+            print(f"Processing {len(years)} years")
             print(f"Using {max_workers} parallel workers")
             print(f"Estimated speedup: {min(max_workers, len(years)):.1f}x")
             print(f"{'='*60}")
@@ -533,10 +547,16 @@ def batch_prepare_training_data(
             total_triplets = sum(results[year]['triplet_count'] for year in successful)
             total_vocab = sum(results[year]['vocab_size'] for year in successful)
             avg_duration = sum(results[year]['total_duration_s'] for year in successful) / len(successful)
+            total_duration = sum(results[year]['total_duration_s'] for year in successful)
             
             print(f"   Total triplets: {total_triplets:,}")
             print(f"   Average vocab size: {total_vocab // len(successful):,}")
             print(f"   Average time per year: {avg_duration:.1f}s")
+            
+            # Overall triplets per second
+            if total_duration > 0:
+                triplets_per_second = total_triplets / total_duration
+                print(f"   Overall triplets/second: {triplets_per_second:,.0f}")
             
             if use_multiprocessing and len(years) > 1:
                 # Calculate parallel efficiency
