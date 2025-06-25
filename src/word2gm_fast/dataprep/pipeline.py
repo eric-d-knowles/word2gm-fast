@@ -450,9 +450,9 @@ def batch_prepare_training_data(
         # Sequential processing
         for i, year in enumerate(years, 1):
             if show_progress:
-                print(f"\n{'='*60}")
+                print(f"\n{'='*65}")
                 print(f"Processing year {year} ({i}/{len(years)})")
-                print(f"{'='*60}")
+                print(f"{'='*65}")
             
             try:
                 corpus_file = f"{year}.txt"
@@ -480,13 +480,13 @@ def batch_prepare_training_data(
             max_workers = min(get_safe_worker_count(), len(years))
         
         if show_progress:
-            print(f"\n{'='*60}")
+            print(f"\n{'='*65}")
             print(f"PARALLEL BATCH PROCESSING")
             print(f"{'='*65}")
             print(f"Processing {len(years)} years")
             print(f"Using {max_workers} parallel workers")
             print(f"Estimated speedup: {min(max_workers, len(years)):.1f}x")
-            print(f"{'='*60}")
+            print(f"{'='*65}")
         
         # Prepare arguments for worker processes
         worker_args = [(year, corpus_dir, compress, False) for year in years]  # show_progress=False in workers
@@ -534,9 +534,9 @@ def batch_prepare_training_data(
             print(f"\nParallel processing completed in {parallel_duration:.1f}s")
 
     if show_summary:
-        print(f"\n{'='*60}")
+        print(f"\n{'='*65}")
         print(f"Batch processing complete!")
-        print(f"{'='*60}")
+        print(f"{'='*65}")
         
         # Summary table
         successful = [year for year, result in results.items() if 'error' not in result]
