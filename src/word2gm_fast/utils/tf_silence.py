@@ -1,8 +1,8 @@
 """
 TensorFlow Silencing Utilities
 
-This module provides utilities to completely silence TensorFlow's verbose output,
-including C++ library messages that bypass Python logging systems.
+This module provides utilities to completely silence TensorFlow's verbose output
+and import TensorFlow with minimal noise.
 """
 
 import contextlib
@@ -10,7 +10,7 @@ import os
 import sys
 
 
-def setup_tf_silence(deterministic=False):
+def setup_tf_silence(deterministic=False, force_cpu=False):
     """
     Set up all TensorFlow environment variables for maximum silencing.
     
@@ -19,11 +19,15 @@ def setup_tf_silence(deterministic=False):
     deterministic : bool, optional
         If True, enable deterministic operations (requires seeds for random ops).
         Default False to avoid breaking existing random operations.
+    force_cpu : bool, optional
+        If True, force CPU-only mode by setting CUDA_VISIBLE_DEVICES=-1.
+        Default False to allow GPU usage.
     """
     # Core TensorFlow silencing
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Only FATAL errors
     os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN messages
-    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force CPU-only
+    if force_cpu:
+        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force CPU-only
     
     # Advanced silencing
     os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices=false'
@@ -62,7 +66,7 @@ def log_tf_to_file(file='tf.log'):
             sys.stderr = old
 
 
-def import_tensorflow_silently(deterministic=False):
+def import_tensorflow_silently(deterministic=False, force_cpu=False):
     """
     Import TensorFlow with complete silencing of all messages.
     
@@ -70,8 +74,15 @@ def import_tensorflow_silently(deterministic=False):
     ----------
     deterministic : bool, optional
         If True, enable deterministic operations. Default False.
+    force_cpu : bool, optional
+        If True, force CPU-only mode. Default False to allow GPU usage.
+        
+    Returns
+    -------
+    tf
+        TensorFlow module
     """
-    setup_tf_silence(deterministic=deterministic)
+    setup_tf_silence(deterministic=deterministic, force_cpu=force_cpu)
     
     with silence_stderr():
         import tensorflow as tf
@@ -95,7 +106,7 @@ def get_silence_status():
     return status
 
 
-def get_silence_env(deterministic=False):
+def get_silence_env(deterministic=False, force_cpu=False):
     """
     Get environment variables for TensorFlow silencing in subprocesses.
     
@@ -103,11 +114,12 @@ def get_silence_env(deterministic=False):
     ----------
     deterministic : bool, optional
         If True, include deterministic operations. Default False.
+    force_cpu : bool, optional
+        If True, force CPU-only mode. Default False to allow GPU usage.
     """
     env = {
         'TF_CPP_MIN_LOG_LEVEL': '3',
         'TF_ENABLE_ONEDNN_OPTS': '0',
-        'CUDA_VISIBLE_DEVICES': '-1',
         'TF_XLA_FLAGS': '--tf_xla_enable_xla_devices=false',
         'AUTOGRAPH_VERBOSITY': '0',
         'TF_CPP_VMODULE': 'computation_placer=0,cuda_dnn=0,cuda_blas=0',
@@ -115,13 +127,16 @@ def get_silence_env(deterministic=False):
         'GRPC_TRACE': ''
     }
     
+    if force_cpu:
+        env['CUDA_VISIBLE_DEVICES'] = '-1'
+    
     if deterministic:
         env['TF_DETERMINISTIC_OPS'] = '1'
     
     return env
 
 
-def run_silent_subprocess(cmd, deterministic=False, **kwargs):
+def run_silent_subprocess(cmd, deterministic=False, force_cpu=False, **kwargs):
     """
     Run a subprocess with TensorFlow silencing environment variables.
     
@@ -131,6 +146,8 @@ def run_silent_subprocess(cmd, deterministic=False, **kwargs):
         Command to run as a list.
     deterministic : bool, optional
         If True, enable deterministic operations. Default False.
+    force_cpu : bool, optional
+        If True, force CPU-only mode. Default False to allow GPU usage.
     **kwargs
         Additional arguments passed to subprocess.run.
     """
@@ -138,7 +155,7 @@ def run_silent_subprocess(cmd, deterministic=False, **kwargs):
     
     # Get current environment and update with silencing vars
     env = os.environ.copy()
-    env.update(get_silence_env(deterministic=deterministic))
+    env.update(get_silence_env(deterministic=deterministic, force_cpu=force_cpu))
     
     # Set env in kwargs if not already provided
     if 'env' not in kwargs:
