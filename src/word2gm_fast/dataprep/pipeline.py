@@ -223,7 +223,7 @@ def prepare_training_data(
         print(f"Triplets generated and saved in {step_duration:.3f}s")
         print()
         print("PIPELINE SUMMARY")
-        print("=" * 50)
+        print("=" * 40)
         print(f"Corpus processed:   {file_size_mb:.3f} MB")
         print(f"Vocabulary size:    {vocab_size:,} words")
         print(f"Training triplets:  {triplet_count:,}")
@@ -482,7 +482,7 @@ def batch_prepare_training_data(
         if show_progress:
             print(f"\n{'='*60}")
             print(f"PARALLEL BATCH PROCESSING")
-            print(f"{'='*60}")
+            print(f"{'='*65}")
             print(f"Processing {len(years)} years")
             print(f"Using {max_workers} parallel workers")
             print(f"Estimated speedup: {min(max_workers, len(years)):.1f}x")
