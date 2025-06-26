@@ -14,8 +14,7 @@ from pathlib import Path
 def setup_notebook_environment(
     project_root: str = '/scratch/edk202/word2gm-fast',
     force_cpu: bool = False,
-    gpu_memory_growth: bool = True,
-    verbose: bool = True
+    gpu_memory_growth: bool = True
 ):
     """
     Set up the notebook environment for Word2GM development.
@@ -28,8 +27,6 @@ def setup_notebook_environment(
         Whether to force CPU-only mode (useful for data preprocessing)
     gpu_memory_growth : bool
         Whether to enable GPU memory growth
-    verbose : bool
-        Whether to print setup information
         
     Returns
     -------
@@ -78,16 +75,26 @@ def setup_notebook_environment(
     setup_info['pandas'] = pd
     setup_info['time'] = time
     setup_info['psutil'] = psutil
-    
-    if verbose:
-        print(f"Project root: {project_root}")
-        print(f"TensorFlow version: {tf.__version__}")
-        print(f"Device mode: {setup_info['device_mode']}")
-        if force_cpu:
-            print("   (Optimal for data preprocessing + multiprocessing)")
-        print("Setup complete; all modules loaded successfully")
-    
+
+    setup_lines = [
+        f"Project root: {project_root}",
+        f"TensorFlow version: {tf.__version__}",
+        f"Device mode: {setup_info['device_mode']}"
+    ]
+    print("\n".join(setup_lines))
+
     return setup_info
+
+
+def run_silent_subprocess(cmd, **kwargs):
+    """
+    Run a subprocess and return the completed process object.
+    By default, suppresses output unless capture_output=True is passed.
+    """
+    import subprocess
+    # Remove 'deterministic' if present (not a valid subprocess arg)
+    kwargs.pop('deterministic', None)
+    return subprocess.run(cmd, **kwargs)
 
 
 def setup_data_preprocessing_notebook(
@@ -107,8 +114,7 @@ def setup_data_preprocessing_notebook(
     setup_info = setup_notebook_environment(
         project_root=project_root,
         force_cpu=True,
-        gpu_memory_growth=False,
-        verbose=False
+        gpu_memory_growth=False
     )
     
     # Import data preprocessing modules
@@ -117,17 +123,9 @@ def setup_data_preprocessing_notebook(
     
     setup_info['batch_prepare_training_data'] = batch_prepare_training_data
     setup_info['print_resource_summary'] = print_resource_summary
-    
-    # Build concise setup confirmation as single output
-    setup_lines = [
-        "Data preprocessing environment ready!",
-        f"Project root: {setup_info['project_root']}",
-        f"TensorFlow {setup_info['tensorflow'].__version__} (CPU-only mode)"
-    ]
-    
-    # Single print to avoid duplication
-    print("\n".join(setup_lines))
-    
+    setup_info['run_silent_subprocess'] = run_silent_subprocess
+    # Only print a single concise confirmation
+    print("Data preprocessing environment ready!")
     return setup_info
 
 
@@ -147,7 +145,6 @@ def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
         project_root=project_root,
         force_cpu=False,
         gpu_memory_growth=True,
-        verbose=False
     )
     
     # Import training modules
@@ -160,17 +157,9 @@ def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
     setup_info['Word2GMConfig'] = Word2GMConfig
     setup_info['train_step'] = train_step
     setup_info['print_resource_summary'] = print_resource_summary
-    
-    # Build concise setup confirmation as single output
-    setup_lines = [
-        "Training environment ready!",
-        f"Project root: {setup_info['project_root']}",
-        f"TensorFlow {setup_info['tensorflow'].__version__} (GPU-enabled mode)"
-    ]
-    
-    # Single print to avoid duplication
-    print("\n".join(setup_lines))
-    
+    setup_info['run_silent_subprocess'] = run_silent_subprocess
+    # Only print a single concise confirmation
+    print("Training environment ready!")
     return setup_info
 
 
@@ -192,7 +181,6 @@ def setup_testing_notebook(
         project_root=project_root,
         force_cpu=False,
         gpu_memory_growth=True,
-        verbose=False
     )
     
     # Import test modules/classes from the correct path
@@ -200,7 +188,7 @@ def setup_testing_notebook(
     from tests.test_dataset_to_triplets import TestDatasetToTriplets
     from tests.test_index_vocab import TestIndexVocab
     from tests.test_tfrecord_io import TestTFRecordIO
-    from tests.tests.test_word2gm_model import TestWord2GMModel
+    from tests.test_word2gm_model import TestWord2GMModel
     from word2gm_fast.utils.resource_summary import print_resource_summary
 
     # Add test classes/utilities to setup_info
@@ -210,14 +198,9 @@ def setup_testing_notebook(
     setup_info['TestTFRecordIO'] = TestTFRecordIO
     setup_info['TestWord2GMModel'] = TestWord2GMModel
     setup_info['print_resource_summary'] = print_resource_summary
-
-    # Build concise setup confirmation as single output
-    setup_lines = [
-        "Testing environment ready!",
-        f"Project root: {setup_info['project_root']}",
-        f"TensorFlow {setup_info['tensorflow'].__version__} (GPU-enabled mode)"
-    ]
-    print("\n".join(setup_lines))
+    setup_info['run_silent_subprocess'] = run_silent_subprocess
+    # Only print a single concise confirmation
+    print("Testing environment ready!")
     return setup_info
 
 
