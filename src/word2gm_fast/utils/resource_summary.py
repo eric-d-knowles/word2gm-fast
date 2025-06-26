@@ -145,7 +145,11 @@ def get_tensorflow_info():
 
 def print_resource_summary():
     """Print a comprehensive resource summary."""
+    import time
+    
+    time.sleep(0.01)
     print("SYSTEM RESOURCE SUMMARY")
+    time.sleep(0.01)
     print("=" * 50)
     
     # Basic system info
@@ -157,8 +161,7 @@ def print_resource_summary():
     print(f"\nJob Allocation:")
     print(f"   CPUs: {slurm_info['cpus']}")
     print(f"   Memory: {slurm_info['memory_gb']:.1f} GB")
-    print(f"   Requested partitions: {slurm_info['requested_partitions']}")
-    print(f"   Actually running on: {slurm_info['actual_partition']}")
+    print(f"   Partition: {slurm_info['actual_partition']}")
     print(f"   Job ID: {slurm_info['job_id']}")
     print(f"   Node list: {slurm_info['node_list']}")
     
@@ -203,6 +206,10 @@ def print_resource_summary():
                 print(f"      {name}{growth_str}")
     
     print("=" * 50)
+    
+    # Flush stdout to prevent output duplication
+    import sys
+    sys.stdout.flush()
 
 
 def get_resource_dict():
@@ -213,8 +220,3 @@ def get_resource_dict():
         'gpu': get_gpu_info(),
         'tensorflow': get_tensorflow_info()
     }
-
-
-if __name__ == "__main__":
-    # When run directly, print the summary
-    print_resource_summary()

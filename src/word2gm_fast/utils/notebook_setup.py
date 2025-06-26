@@ -103,12 +103,12 @@ def setup_data_preprocessing_notebook(
     project_root : str
         Path to the project root directory
     """
-    # Basic setup with CPU-only mode
+    # Basic setup with CPU-only mode (less verbose to avoid duplicates)
     setup_info = setup_notebook_environment(
         project_root=project_root,
         force_cpu=True,
         gpu_memory_growth=False,
-        verbose=True
+        verbose=False  # Reduce verbosity to prevent duplicate output
     )
     
     # Import data preprocessing modules
@@ -117,6 +117,20 @@ def setup_data_preprocessing_notebook(
     
     setup_info['batch_prepare_training_data'] = batch_prepare_training_data
     setup_info['print_resource_summary'] = print_resource_summary
+    
+    # Print concise setup confirmation with delays to prevent duplication
+    import sys
+    import time
+    
+    time.sleep(0.01)
+    print("Data preprocessing environment ready!")
+    time.sleep(0.01)
+    print(f"Project root: {setup_info['project_root']}")
+    time.sleep(0.01)
+    print(f"TensorFlow {setup_info['tensorflow'].__version__} (CPU-only mode)")
+    
+    # Flush stdout to prevent output duplication
+    sys.stdout.flush()
     
     return setup_info
 
@@ -132,12 +146,12 @@ def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
     project_root : str
         Path to the project root directory
     """
-    # Basic setup with GPU enabled
+    # Basic setup with GPU enabled (less verbose to avoid duplicates)
     setup_info = setup_notebook_environment(
         project_root=project_root,
         force_cpu=False,
         gpu_memory_growth=True,
-        verbose=True
+        verbose=False  # Reduce verbosity to prevent duplicate output
     )
     
     # Import training modules
@@ -150,6 +164,20 @@ def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
     setup_info['Word2GMConfig'] = Word2GMConfig
     setup_info['train_step'] = train_step
     setup_info['print_resource_summary'] = print_resource_summary
+    
+    # Print concise setup confirmation with delays to prevent duplication
+    import sys
+    import time
+    
+    time.sleep(0.01)
+    print("Training environment ready!")
+    time.sleep(0.01)
+    print(f"Project root: {setup_info['project_root']}")
+    time.sleep(0.01)
+    print(f"TensorFlow {setup_info['tensorflow'].__version__} (GPU-enabled mode)")
+    
+    # Flush stdout to prevent output duplication
+    sys.stdout.flush()
     
     return setup_info
 
