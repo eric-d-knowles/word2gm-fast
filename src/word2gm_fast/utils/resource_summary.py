@@ -11,6 +11,7 @@ import subprocess
 import psutil
 import pynvml
 import tensorflow as tf
+from IPython.display import display, Markdown
 
 
 def get_hostname():
@@ -144,8 +145,7 @@ def get_tensorflow_info():
 
 
 def print_resource_summary():
-    """Print a comprehensive resource summary."""
-    # Build the entire output as a single string to avoid multiple print calls
+    """Print a comprehensive resource summary using monospace font in notebook."""
     output_lines = []
     output_lines.append("SYSTEM RESOURCE SUMMARY")
     output_lines.append("=" * 50)
@@ -207,8 +207,8 @@ def print_resource_summary():
     
     output_lines.append("=" * 50)
     
-    # Single print statement to avoid duplication
-    print("\n".join(output_lines))
+    # Display as monospace, no background
+    display(Markdown(f"<pre>{'\n'.join(output_lines)}</pre>"))
     
     # Flush stdout to prevent output duplication
     import sys

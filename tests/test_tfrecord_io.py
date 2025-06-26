@@ -27,6 +27,15 @@ from src.word2gm_fast.dataprep.tfrecord_io import (
     load_pipeline_artifacts
 )
 
+@pytest.fixture(scope="module")
+def summary_collector(request):
+    summaries = []
+    yield summaries
+    def print_summaries():
+        for s in summaries:
+            print(s)
+    request.addfinalizer(print_summaries)
+
 @pytest.fixture
 def tfrecord_test_data(tmp_path):
     # Create sample vocabulary data
@@ -63,7 +72,7 @@ def tfrecord_test_data(tmp_path):
         'text_dataset': text_dataset
     }
 
-def test_write_and_load_triplets_uncompressed(tfrecord_test_data):
+def test_write_and_load_triplets_uncompressed(tfrecord_test_data, summary_collector):
     tmp_dir = tfrecord_test_data['tmp_dir']
     triplets_dataset = tfrecord_test_data['triplets_dataset']
     triplet_path = tmp_dir / "triplets.tfrecord"
@@ -71,8 +80,10 @@ def test_write_and_load_triplets_uncompressed(tfrecord_test_data):
     loaded_ds = load_triplets_from_tfrecord(str(triplet_path))
     loaded_triplets = [tuple(t.numpy() for t in x) for x in loaded_ds]
     assert loaded_triplets == tfrecord_test_data['triplet_data']
+    summary_collector.append("[TEST -- tfrecord_io] test_write_and_load_triplets_uncompressed: Roundtrip TFRecord I/O for triplets (uncompressed)")
+    print("[SUMMARY] test_write_and_load_triplets_uncompressed: Validates roundtrip TFRecord I/O for triplets (uncompressed).")
 
-def test_write_and_load_triplets_compressed(tfrecord_test_data):
+def test_write_and_load_triplets_compressed(tfrecord_test_data, summary_collector):
     tmp_dir = tfrecord_test_data['tmp_dir']
     triplets_dataset = tfrecord_test_data['triplets_dataset']
     triplet_path = tmp_dir / "triplets_compressed.tfrecord.gz"
@@ -80,8 +91,10 @@ def test_write_and_load_triplets_compressed(tfrecord_test_data):
     loaded_ds = load_triplets_from_tfrecord(str(triplet_path), compressed=True)
     loaded_triplets = [tuple(t.numpy() for t in x) for x in loaded_ds]
     assert loaded_triplets == tfrecord_test_data['triplet_data']
+    summary_collector.append("[TEST -- tfrecord_io] test_write_and_load_triplets_compressed: Roundtrip TFRecord I/O for triplets (compressed)")
+    print("[SUMMARY] test_write_and_load_triplets_compressed: Validates roundtrip TFRecord I/O for triplets (compressed).")
 
-def test_parse_triplet_example(tfrecord_test_data):
+def test_parse_triplet_example(tfrecord_test_data, summary_collector):
     # Serialize and parse a single example
     ex = tf.train.Example(features=tf.train.Features(feature={
         'center': tf.train.Feature(int64_list=tf.train.Int64List(value=[1])),
@@ -91,8 +104,10 @@ def test_parse_triplet_example(tfrecord_test_data):
     ex_bytes = ex.SerializeToString()
     parsed = parse_triplet_example(ex_bytes)
     assert tuple(t.numpy() for t in parsed) == (1, 2, 3)
+    summary_collector.append("[TEST -- tfrecord_io] test_parse_triplet_example: Correct parsing of serialized triplet examples")
+    print("[SUMMARY] test_parse_triplet_example: Checks correct parsing of serialized triplet examples.")
 
-def test_write_and_load_vocab_uncompressed(tfrecord_test_data):
+def test_write_and_load_vocab_uncompressed(tfrecord_test_data, summary_collector):
     tmp_dir = tfrecord_test_data['tmp_dir']
     vocab_table = tfrecord_test_data['vocab_table']
     vocab_words = tfrecord_test_data['vocab_words']
@@ -105,8 +120,10 @@ def test_write_and_load_vocab_uncompressed(tfrecord_test_data):
         assert loaded_vocab_table.lookup(tf.constant(word)).numpy() == idx
     # Check that an OOV word maps to 0 (UNK)
     assert loaded_vocab_table.lookup(tf.constant("notinthevocab")).numpy() == 0
+    summary_collector.append("[TEST -- tfrecord_io] test_write_and_load_vocab_uncompressed: Roundtrip TFRecord I/O for vocabulary (uncompressed)")
+    print("[SUMMARY] test_write_and_load_vocab_uncompressed: Validates roundtrip TFRecord I/O for vocabulary (uncompressed).");
 
-def test_write_and_load_vocab_compressed(tfrecord_test_data):
+def test_write_and_load_vocab_compressed(tfrecord_test_data, summary_collector):
     tmp_dir = tfrecord_test_data['tmp_dir']
     vocab_table = tfrecord_test_data['vocab_table']
     vocab_words = tfrecord_test_data['vocab_words']
@@ -117,8 +134,10 @@ def test_write_and_load_vocab_compressed(tfrecord_test_data):
     for word, idx in zip(vocab_words, vocab_ids):
         assert loaded_vocab_table.lookup(tf.constant(word)).numpy() == idx
     assert loaded_vocab_table.lookup(tf.constant("notinthevocab")).numpy() == 0
+    summary_collector.append("[TEST -- tfrecord_io] test_write_and_load_vocab_compressed: Roundtrip TFRecord I/O for vocabulary (compressed)")
+    print("[SUMMARY] test_write_and_load_vocab_compressed: Validates roundtrip TFRecord I/O for vocabulary (compressed).")
 
-def test_parse_vocab_example(tfrecord_test_data):
+def test_parse_vocab_example(tfrecord_test_data, summary_collector):
     ex = tf.train.Example(features=tf.train.Features(feature={
         'word': tf.train.Feature(bytes_list=tf.train.BytesList(value=[b'test'])),
         'id': tf.train.Feature(int64_list=tf.train.Int64List(value=[42]))
@@ -127,8 +146,10 @@ def test_parse_vocab_example(tfrecord_test_data):
     word, idx = parse_vocab_example(ex_bytes)
     assert word.numpy() == b'test'
     assert idx.numpy() == 42
+    summary_collector.append("[TEST -- tfrecord_io] test_parse_vocab_example: Correct parsing of serialized vocabulary examples")
+    print("[SUMMARY] test_parse_vocab_example: Checks correct parsing of serialized vocabulary examples.")
 
-def test_save_and_load_pipeline_artifacts(tfrecord_test_data):
+def test_save_and_load_pipeline_artifacts(tfrecord_test_data, summary_collector):
     tmp_dir = tfrecord_test_data['tmp_dir']
     artifacts_dir = tmp_dir / "artifacts"
     os.makedirs(artifacts_dir, exist_ok=True)
@@ -146,3 +167,5 @@ def test_save_and_load_pipeline_artifacts(tfrecord_test_data):
         assert loaded_vocab.lookup(tf.constant(word)).numpy() == expected_id
     loaded_triplets_list = [tuple(x) for x in loaded_triplets]
     assert loaded_triplets_list == tfrecord_test_data['triplet_data']
+    summary_collector.append("[TEST -- tfrecord_io] test_save_and_load_pipeline_artifacts: Saving and loading of all pipeline artifacts (vocab and triplets) as TFRecords")
+    print("[SUMMARY] test_save_and_load_pipeline_artifacts: Validates saving and loading of all pipeline artifacts (vocab and triplets) as TFRecords")

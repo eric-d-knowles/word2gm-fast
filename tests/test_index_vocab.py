@@ -7,6 +7,18 @@ import numpy as np
 from src.word2gm_fast.dataprep.index_vocab import make_vocab, build_vocab_table
 
 
+@pytest.fixture(scope="module")
+def summary_collector(request):
+    summaries = []
+    yield summaries
+
+    def print_summaries():
+        for s in summaries:
+            print(s)
+
+    request.addfinalizer(print_summaries)
+
+
 @pytest.fixture
 def vocab_dataset():
     lines = [
@@ -30,7 +42,7 @@ def vocab_dataset():
     return lines, dataset
 
 
-def test_make_vocab_table(vocab_dataset):
+def test_make_vocab_table(vocab_dataset, summary_collector):
     _, dataset = vocab_dataset
     table = make_vocab(dataset)
     expected_tokens = ["UNK", "the", "quick", "brown", "fox", "jumps", "lazy", "dog", "over"]
@@ -38,9 +50,10 @@ def test_make_vocab_table(vocab_dataset):
         idx = table.lookup(tf.constant(token)).numpy()
         assert isinstance(idx, (int, np.integer))
     assert table.lookup(tf.constant("UNK")).numpy() == 0
+    summary_collector.append("[TEST -- index_vocab] test_make_vocab_table: Vocabulary table is built and maps tokens to expected indices")
 
 
-def test_vocab_table_contents(vocab_dataset):
+def test_vocab_table_contents(vocab_dataset, summary_collector):
     lines, _ = vocab_dataset
     vocab_set = set()
     for line in lines:
@@ -51,3 +64,4 @@ def test_vocab_table_contents(vocab_dataset):
     for i, token in enumerate(vocab):
         assert table.lookup(tf.constant(token)).numpy() == i
     assert table.lookup(tf.constant("notinthevocab")).numpy() == 0
+    summary_collector.append("[TEST -- index_vocab] test_vocab_table_contents: Table contains all expected tokens and handles OOV as UNK")

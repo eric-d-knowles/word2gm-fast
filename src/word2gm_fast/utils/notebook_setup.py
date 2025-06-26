@@ -9,6 +9,7 @@ import os
 import sys
 import warnings
 from pathlib import Path
+from IPython.display import display, Markdown
 
 
 def setup_notebook_environment(
@@ -81,7 +82,7 @@ def setup_notebook_environment(
         f"TensorFlow version: {tf.__version__}",
         f"Device mode: {setup_info['device_mode']}"
     ]
-    print("\n".join(setup_lines))
+    display(Markdown(f"<pre>{'\n'.join(setup_lines)}</pre>"))
 
     return setup_info
 
@@ -125,7 +126,7 @@ def setup_data_preprocessing_notebook(
     setup_info['print_resource_summary'] = print_resource_summary
     setup_info['run_silent_subprocess'] = run_silent_subprocess
     # Only print a single concise confirmation
-    print("Data preprocessing environment ready!")
+    display(Markdown("<pre>Data preprocessing environment ready!</pre>"))
     return setup_info
 
 
@@ -159,7 +160,7 @@ def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
     setup_info['print_resource_summary'] = print_resource_summary
     setup_info['run_silent_subprocess'] = run_silent_subprocess
     # Only print a single concise confirmation
-    print("Training environment ready!")
+    display(Markdown("<pre>Training environment ready!</pre>"))
     return setup_info
 
 
@@ -205,7 +206,7 @@ def setup_testing_notebook(
 
     setup_info['print_resource_summary'] = print_resource_summary
     setup_info['run_silent_subprocess'] = run_silent_subprocess
-    print("Testing environment ready!")
+    display(Markdown("<pre>Testing environment ready!</pre>"))
     return setup_info
 
 
@@ -216,18 +217,18 @@ def enable_autoreload():
         ipython = get_ipython()
         
         if ipython is None:
-            print("Not in IPython environment - autoreload not available")
+            display(Markdown("<pre>Not in IPython environment - autoreload not available</pre>"))
             return False
         
         # Load autoreload extension and enable mode 2
         ipython.run_line_magic('load_ext', 'autoreload')
         ipython.run_line_magic('autoreload', '2')
-        print("Autoreload enabled")
+        display(Markdown("<pre>Autoreload enabled</pre>"))
         return True
         
     except ImportError:
-        print("IPython not available - autoreload not supported")
+        display(Markdown("<pre>IPython not available - autoreload not supported</pre>"))
         return False
     except Exception as e:
-        print(f"Could not configure autoreload: {e}")
+        display(Markdown(f"<pre>Could not configure autoreload: {e}</pre>"))
         return False
