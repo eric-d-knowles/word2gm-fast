@@ -103,12 +103,12 @@ def setup_data_preprocessing_notebook(
     project_root : str
         Path to the project root directory
     """
-    # Basic setup with CPU-only mode (less verbose to avoid duplicates)
+    # Basic setup with CPU-only mode
     setup_info = setup_notebook_environment(
         project_root=project_root,
         force_cpu=True,
         gpu_memory_growth=False,
-        verbose=False  # Reduce verbosity to prevent duplicate output
+        verbose=False
     )
     
     # Import data preprocessing modules
@@ -128,10 +128,6 @@ def setup_data_preprocessing_notebook(
     # Single print to avoid duplication
     print("\n".join(setup_lines))
     
-    # Flush stdout to prevent output duplication
-    import sys
-    sys.stdout.flush()
-    
     return setup_info
 
 
@@ -146,12 +142,12 @@ def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
     project_root : str
         Path to the project root directory
     """
-    # Basic setup with GPU enabled (less verbose to avoid duplicates)
+    # Basic setup with GPU enabled
     setup_info = setup_notebook_environment(
         project_root=project_root,
         force_cpu=False,
         gpu_memory_growth=True,
-        verbose=False  # Reduce verbosity to prevent duplicate output
+        verbose=False
     )
     
     # Import training modules
@@ -175,10 +171,53 @@ def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
     # Single print to avoid duplication
     print("\n".join(setup_lines))
     
-    # Flush stdout to prevent output duplication
-    import sys
-    sys.stdout.flush()
+    return setup_info
+
+
+def setup_testing_notebook(
+    project_root: str = '/scratch/edk202/word2gm-fast'
+):
+    """
+    Specialized setup for testing notebooks.
     
+    Configures GPU mode and imports test modules/classes.
+    
+    Parameters
+    ----------
+    project_root : str
+        Path to the project root directory
+    """
+    # Basic setup with GPU enabled
+    setup_info = setup_notebook_environment(
+        project_root=project_root,
+        force_cpu=False,
+        gpu_memory_growth=True,
+        verbose=False
+    )
+    
+    # Import test modules/classes from the correct path
+    from tests.test_corpus_to_dataset import TestCorpusToDataset
+    from tests.test_dataset_to_triplets import TestDatasetToTriplets
+    from tests.test_index_vocab import TestIndexVocab
+    from tests.test_tfrecord_io import TestTFRecordIO
+    from tests.tests.test_word2gm_model import TestWord2GMModel
+    from word2gm_fast.utils.resource_summary import print_resource_summary
+
+    # Add test classes/utilities to setup_info
+    setup_info['TestCorpusToDataset'] = TestCorpusToDataset
+    setup_info['TestDatasetToTriplets'] = TestDatasetToTriplets
+    setup_info['TestIndexVocab'] = TestIndexVocab
+    setup_info['TestTFRecordIO'] = TestTFRecordIO
+    setup_info['TestWord2GMModel'] = TestWord2GMModel
+    setup_info['print_resource_summary'] = print_resource_summary
+
+    # Build concise setup confirmation as single output
+    setup_lines = [
+        "Testing environment ready!",
+        f"Project root: {setup_info['project_root']}",
+        f"TensorFlow {setup_info['tensorflow'].__version__} (GPU-enabled mode)"
+    ]
+    print("\n".join(setup_lines))
     return setup_info
 
 
