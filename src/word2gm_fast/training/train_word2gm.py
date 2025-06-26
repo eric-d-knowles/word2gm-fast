@@ -63,7 +63,8 @@ def train_word2gm(
     artifacts_dir: str,
     output_dir: str,
     config: Word2GMConfig,
-    verbose: bool = True
+    verbose: bool = True,
+    use_tensorboard: bool = True
 ):
     """
     Train Word2GM model on TFRecord data.
@@ -78,6 +79,8 @@ def train_word2gm(
         Training configuration
     verbose : bool
         Whether to print progress
+    use_tensorboard : bool
+        Whether to enable TensorBoard logging
     """
     os.makedirs(output_dir, exist_ok=True)
     
@@ -109,6 +112,15 @@ def train_word2gm(
             nesterov=True
         )
     
+    # Setup TensorBoard (optional)
+    summary_writer = None
+    if use_tensorboard:
+        tensorboard_dir = os.path.join(output_dir, "tensorboard")
+        os.makedirs(tensorboard_dir, exist_ok=True)
+        summary_writer = tf.summary.create_file_writer(tensorboard_dir)
+        if verbose:
+            print(f"TensorBoard logs: {tensorboard_dir}")
+    
     if verbose:
         print(f"Model created with {config.num_mixtures} mixture components")
         print(f"Optimizer: {'Adagrad' if config.adagrad else 'SGD'}")
@@ -127,7 +139,7 @@ def train_word2gm(
             print(f"Epoch {epoch + 1}/{config.epochs_to_train}")
         
         for batch_idx, (word_ids, pos_ids, neg_ids) in enumerate(dataset):
-            # Training step
+            # Training step using optimized function from training_utils
             loss, grads = train_step(
                 model, optimizer, word_ids, pos_ids, neg_ids,
                 normclip=config.normclip,
@@ -140,6 +152,17 @@ def train_word2gm(
             epoch_loss += loss
             num_batches += 1
             
+            # TensorBoard logging
+            if summary_writer and batch_idx % 100 == 0:
+                global_step = epoch * 1000 + batch_idx
+                with summary_writer.as_default():
+                    tf.summary.scalar("batch_loss", loss, step=global_step)
+                    tf.summary.scalar("learning_rate", optimizer.learning_rate, step=global_step)
+                    
+                    # Detailed metrics every 500 steps
+                    if batch_idx % 500 == 0:
+                        log_training_metrics(model, grads, step=global_step, summary_writer=summary_writer)
+            
             # Print progress
             if verbose and batch_idx % 100 == 0 and batch_idx > 0:
                 avg_loss = epoch_loss / num_batches
@@ -148,6 +171,12 @@ def train_word2gm(
         # Epoch summary
         avg_loss = epoch_loss / max(1, num_batches)
         epoch_time = time.time() - epoch_start
+        
+        # TensorBoard epoch logging
+        if summary_writer:
+            with summary_writer.as_default():
+                tf.summary.scalar("epoch_loss", avg_loss, step=epoch)
+                tf.summary.scalar("epoch_time", epoch_time, step=epoch)
         
         if verbose:
             print(f"  Epoch {epoch + 1} complete: avg_loss = {avg_loss:.6f}, time = {epoch_time:.1f}s")
@@ -176,9 +205,16 @@ def train_word2gm(
     with open(config_path, 'w') as f:
         json.dump(config.__dict__, f, indent=2)
     
+    # Cleanup TensorBoard
+    if summary_writer:
+        summary_writer.flush()
+        summary_writer.close()
+    
     if verbose:
         print(f"Training complete! Models saved to {output_dir}")
         print(f"Best loss: {best_loss:.6f}")
+        if use_tensorboard:
+            print(f"View training metrics: tensorboard --logdir {os.path.join(output_dir, 'tensorboard')}")
     
     return model
 
@@ -215,6 +251,10 @@ def main():
     parser.add_argument("--normclip", action="store_true", default=True,
                        help="Enable norm clipping")
     
+    # Monitoring
+    parser.add_argument("--tensorboard", action="store_true", default=True,
+                       help="Enable TensorBoard logging")
+    
     args = parser.parse_args()
     
     # Create config
@@ -243,7 +283,12 @@ def main():
     print()
     
     # Train model
-    model = train_word2gm(args.artifacts_dir, args.output_dir, config)
+    model = train_word2gm(
+        args.artifacts_dir, 
+        args.output_dir, 
+        config,
+        use_tensorboard=args.tensorboard
+    )
     
     print("Training complete!")
 
