@@ -3,28 +3,13 @@ Complete data preparation pipeline for Word2GM skip-gram training data.
 
 This module provides a high-level interface to process corpus files and generate
 TFRecord training artifacts. It handles the entire pipeline from corpus filtering
-through TFRecord serialization with optimized performance and clean outdef batch_prepare_training_data(
-    corpus_dir: str,
-    years: list[str] | None = None,
-    year_range: str | None = None,
-    compress: bool = True,
-    show_progress: bool = True,
-    show_summary: bool = True,
-    max_workers: int def process_all_corpora(
-    corpus_dir: str,
-    year_range: str | None = None,
-    compress: bool = True,
-    max_workers: int | None = None,
-    show_progress: bool = True,
-    exclude_years: list[str] | None = None,
-    include_patterns: list[str] | None = None
-) -> dict: None,
-    use_multiprocessing: bool = True
-) -> dict: pipeline uses an optimized direct-to-TFRecord approach that avoids unnecessary
+through TFRecord serialization with optimized performance and clean output.
+
+The pipeline uses an optimized direct-to-TFRecord approach that avoids unnecessary
 dataset manifestation for maximum performance and memory efficiency.
 
 Usage:
-    from src.word2gm_fast.dataprep.pipeline import prepare_training_data
+    from word2gm_fast.dataprep.pipeline import prepare_training_data
     
     # Process a corpus file and generate training artifacts
     prepare_training_data(
@@ -34,22 +19,23 @@ Usage:
     )
     
     # Process multiple years in parallel
-    from src.word2gm_fast.dataprep.pipeline import batch_prepare_training_data
+    from word2gm_fast.dataprep.pipeline import batch_prepare_training_data
     
     # Auto-discover and process all corpus files
     results = batch_prepare_training_data(corpus_dir)
     
     # Process specific years
-    results = batch_prepare_training_data(corpus_dir, years=["2018", "2019"])
+    results = batch_prepare_training_data(corpus_dir, year_range="2018-2019")
 """
 
 import os
 import sys
 import time
-from typing import Optional
+import fnmatch
+import multiprocessing as mp
+from typing import Optional, List
 from io import StringIO
 from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing as mp
 
 # Pipeline components will be imported when needed to avoid multiprocessing issues
 
@@ -124,8 +110,11 @@ def prepare_training_data(
     """
     
     # Import TensorFlow and pipeline components inside function to avoid multiprocessing issues
+    # Force CPU-only mode in multiprocessing workers to avoid CUDA initialization errors
+    force_cpu = mp.current_process().name != 'MainProcess'
+    
     from ..utils import import_tensorflow_silently
-    tf = import_tensorflow_silently(deterministic=False)
+    tf = import_tensorflow_silently(deterministic=False, force_cpu=force_cpu, gpu_memory_growth=not force_cpu)
     
     from .corpus_to_dataset import make_dataset
     from .index_vocab import make_vocab
@@ -326,8 +315,8 @@ def _process_single_year(args):
 
 def batch_prepare_training_data(
     corpus_dir: str,
-    years: list[str] | None = None,
-    year_range: str | None = None,
+    years: Optional[List[str]] = None,
+    year_range: Optional[str] = None,
     compress: bool = True,
     show_progress: bool = True,
     show_summary: bool = True,
@@ -580,8 +569,8 @@ def process_all_corpora(
     compress: bool = True,
     max_workers: int = None,
     show_progress: bool = True,
-    exclude_years: list[str] | None = None,
-    include_patterns: list[str] | None = None
+    exclude_years: Optional[List[str]] = None,
+    include_patterns: Optional[List[str]] = None
 ) -> dict:
     """
     Convenience function to process ALL corpus files in a directory.
@@ -657,7 +646,6 @@ def process_all_corpora(
     
     # Apply include patterns
     if include_patterns:
-        import fnmatch
         filtered_years = []
         for year in years_to_process:
             if any(fnmatch.fnmatch(year, pattern) for pattern in include_patterns):
@@ -719,9 +707,6 @@ def detect_cluster_resources() -> dict:
     dict
         Dictionary with detected and allocated CPU information
     """
-    import os
-    import multiprocessing as mp
-    
     result = {
         'detected_cpus': mp.cpu_count(),
         'allocated_cpus': None,
@@ -792,7 +777,7 @@ def parse_year_range(year_range: str) -> list[str]:
         
     Returns
     -------
-    list[str]
+    List[str]
         List of years as strings
         
     Examples

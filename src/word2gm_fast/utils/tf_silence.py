@@ -66,7 +66,28 @@ def log_tf_to_file(file='tf.log'):
             sys.stderr = old
 
 
-def import_tensorflow_silently(deterministic=False, force_cpu=False):
+def configure_tf_gpu_memory():
+    """
+    Configure TensorFlow GPU memory to grow dynamically instead of allocating all at once.
+    This prevents CUDA out-of-memory errors on large GPUs like A100s.
+    Should be called after importing TensorFlow but before creating any operations.
+    """
+    import tensorflow as tf
+    
+    # Get list of physical GPU devices
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    
+    if gpus:
+        try:
+            # Enable memory growth for all GPUs
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            # Memory growth must be set at program startup
+            print(f"Warning: Could not set GPU memory growth: {e}")
+
+
+def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_growth=True):
     """
     Import TensorFlow with complete silencing of all messages.
     
@@ -76,6 +97,8 @@ def import_tensorflow_silently(deterministic=False, force_cpu=False):
         If True, enable deterministic operations. Default False.
     force_cpu : bool, optional
         If True, force CPU-only mode. Default False to allow GPU usage.
+    gpu_memory_growth : bool, optional
+        If True, configure GPU memory to grow dynamically. Default True.
         
     Returns
     -------
@@ -88,6 +111,10 @@ def import_tensorflow_silently(deterministic=False, force_cpu=False):
         import tensorflow as tf
         tf.get_logger().setLevel('ERROR')
         tf.config.experimental.enable_op_determinism()
+        
+        # Configure GPU memory growth if requested and not forcing CPU
+        if gpu_memory_growth and not force_cpu:
+            configure_tf_gpu_memory()
     
     return tf
 
