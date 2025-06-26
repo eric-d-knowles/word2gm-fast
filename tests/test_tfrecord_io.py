@@ -69,16 +69,16 @@ def test_write_and_load_triplets_uncompressed(tfrecord_test_data):
     triplet_path = tmp_dir / "triplets.tfrecord"
     write_triplets_to_tfrecord(triplets_dataset, str(triplet_path))
     loaded_ds = load_triplets_from_tfrecord(str(triplet_path))
-    loaded_triplets = [tuple(x.numpy()) for x in loaded_ds]
+    loaded_triplets = [tuple(t.numpy() for t in x) for x in loaded_ds]
     assert loaded_triplets == tfrecord_test_data['triplet_data']
 
 def test_write_and_load_triplets_compressed(tfrecord_test_data):
     tmp_dir = tfrecord_test_data['tmp_dir']
     triplets_dataset = tfrecord_test_data['triplets_dataset']
     triplet_path = tmp_dir / "triplets_compressed.tfrecord.gz"
-    write_triplets_to_tfrecord(triplets_dataset, str(triplet_path), compression_type="GZIP")
-    loaded_ds = load_triplets_from_tfrecord(str(triplet_path), compression_type="GZIP")
-    loaded_triplets = [tuple(x.numpy()) for x in loaded_ds]
+    write_triplets_to_tfrecord(triplets_dataset, str(triplet_path), compress=True)
+    loaded_ds = load_triplets_from_tfrecord(str(triplet_path), compressed=True)
+    loaded_triplets = [tuple(t.numpy() for t in x) for x in loaded_ds]
     assert loaded_triplets == tfrecord_test_data['triplet_data']
 
 def test_parse_triplet_example(tfrecord_test_data):
@@ -90,27 +90,33 @@ def test_parse_triplet_example(tfrecord_test_data):
     }))
     ex_bytes = ex.SerializeToString()
     parsed = parse_triplet_example(ex_bytes)
-    assert tuple(parsed.numpy()) == (1, 2, 3)
+    assert tuple(t.numpy() for t in parsed) == (1, 2, 3)
 
 def test_write_and_load_vocab_uncompressed(tfrecord_test_data):
     tmp_dir = tfrecord_test_data['tmp_dir']
+    vocab_table = tfrecord_test_data['vocab_table']
     vocab_words = tfrecord_test_data['vocab_words']
     vocab_ids = tfrecord_test_data['vocab_ids']
     vocab_path = tmp_dir / "vocab.tfrecord"
-    write_vocab_to_tfrecord(vocab_words, vocab_ids, str(vocab_path))
-    loaded_words, loaded_ids = load_vocab_from_tfrecord(str(vocab_path))
-    assert list(loaded_words.numpy()) == [w.encode() for w in vocab_words]
-    assert list(loaded_ids.numpy()) == vocab_ids
+    write_vocab_to_tfrecord(vocab_table, str(vocab_path))
+    loaded_vocab_table = load_vocab_from_tfrecord(str(vocab_path))
+    # Check that all vocab words map to the correct ids
+    for word, idx in zip(vocab_words, vocab_ids):
+        assert loaded_vocab_table.lookup(tf.constant(word)).numpy() == idx
+    # Check that an OOV word maps to 0 (UNK)
+    assert loaded_vocab_table.lookup(tf.constant("notinthevocab")).numpy() == 0
 
 def test_write_and_load_vocab_compressed(tfrecord_test_data):
     tmp_dir = tfrecord_test_data['tmp_dir']
+    vocab_table = tfrecord_test_data['vocab_table']
     vocab_words = tfrecord_test_data['vocab_words']
     vocab_ids = tfrecord_test_data['vocab_ids']
     vocab_path = tmp_dir / "vocab_compressed.tfrecord.gz"
-    write_vocab_to_tfrecord(vocab_words, vocab_ids, str(vocab_path), compression_type="GZIP")
-    loaded_words, loaded_ids = load_vocab_from_tfrecord(str(vocab_path), compression_type="GZIP")
-    assert list(loaded_words.numpy()) == [w.encode() for w in vocab_words]
-    assert list(loaded_ids.numpy()) == vocab_ids
+    write_vocab_to_tfrecord(vocab_table, str(vocab_path), compress=True)
+    loaded_vocab_table = load_vocab_from_tfrecord(str(vocab_path), compressed=True)
+    for word, idx in zip(vocab_words, vocab_ids):
+        assert loaded_vocab_table.lookup(tf.constant(word)).numpy() == idx
+    assert loaded_vocab_table.lookup(tf.constant("notinthevocab")).numpy() == 0
 
 def test_parse_vocab_example(tfrecord_test_data):
     ex = tf.train.Example(features=tf.train.Features(feature={
@@ -124,20 +130,19 @@ def test_parse_vocab_example(tfrecord_test_data):
 
 def test_save_and_load_pipeline_artifacts(tfrecord_test_data):
     tmp_dir = tfrecord_test_data['tmp_dir']
-    vocab_words = tfrecord_test_data['vocab_words']
-    vocab_ids = tfrecord_test_data['vocab_ids']
-    triplet_data = tfrecord_test_data['triplet_data']
-    triplets_dataset = tfrecord_test_data['triplets_dataset']
     artifacts_dir = tmp_dir / "artifacts"
     os.makedirs(artifacts_dir, exist_ok=True)
     save_pipeline_artifacts(
-        str(artifacts_dir),
-        vocab_words=vocab_words,
-        vocab_ids=vocab_ids,
-        triplets=triplets_dataset
+        tfrecord_test_data['text_dataset'],
+        tfrecord_test_data['vocab_table'],
+        tfrecord_test_data['triplets_dataset'],
+        str(artifacts_dir)
     )
-    loaded_vocab, loaded_ids, loaded_triplets = load_pipeline_artifacts(str(artifacts_dir))
-    assert list(loaded_vocab.numpy()) == [w.encode() for w in vocab_words]
-    assert list(loaded_ids.numpy()) == vocab_ids
-    loaded_triplets_list = [tuple(x.numpy()) for x in loaded_triplets]
-    assert loaded_triplets_list == triplet_data
+    artifacts = load_pipeline_artifacts(str(artifacts_dir))
+    loaded_vocab = artifacts['vocab_table']
+    loaded_triplets = artifacts['triplets_ds']
+    # Check that the lookup table maps each word to the correct id
+    for word, expected_id in zip(tfrecord_test_data['vocab_words'], tfrecord_test_data['vocab_ids']):
+        assert loaded_vocab.lookup(tf.constant(word)).numpy() == expected_id
+    loaded_triplets_list = [tuple(x) for x in loaded_triplets]
+    assert loaded_triplets_list == tfrecord_test_data['triplet_data']

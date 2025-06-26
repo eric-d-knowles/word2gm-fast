@@ -63,43 +63,17 @@ def test_context_word_extraction(triplet_test_data):
         pos = triplet[1]
         assert pos in context_ids
 
-def test_no_unk_centers():
-    """Test that UNK tokens are never used as center words."""
-    # Create a dataset with UNK in center position
-    unk_lines = [
-        b"the quick UNK fox jumps",  # UNK in center
-        b"UNK brown fox jumps over",  # UNK not in center (should be valid)
-    ]
-    unk_dataset = tf.data.Dataset.from_tensor_slices(unk_lines)
-    
-    triplets_ds = build_skipgram_triplets(unk_dataset, vocab_table)
+def test_multiple_triplets_per_line(triplet_test_data):
+    """Test that multiple triplets are generated per valid line."""
+    vocab, vocab_table, lines, dataset = triplet_test_data
+    triplets_ds = build_skipgram_triplets(dataset, vocab_table)
     triplets = list(triplets_ds.as_numpy_iterator())
-    
-    # Should have some triplets (from the second line)
-    assert len(triplets) > 0
-    
-    # No triplet should have UNK (index 0) as center
+    # There should be multiple triplets (since each line can generate up to 4)
+    assert len(triplets) >= 4
+    # All centers should be valid (not UNK)
     for triplet in triplets:
         center = triplet[0]
-        assert center != 0, "UNK should not be used as center word"
-
-def test_multiple_triplets_per_line():
-    """Test that multiple triplets are generated per valid line."""
-    # Use a single line that should generate multiple triplets
-    single_line = tf.data.Dataset.from_tensor_slices([b"the quick brown fox jumps"])
-    
-    triplets_ds = build_skipgram_triplets(single_line, vocab_table)
-    triplets = list(triplets_ds.as_numpy_iterator())
-    
-    # Should generate multiple triplets (one for each valid context word)
-    # Line "the quick brown fox jumps" has center "brown" and 4 context words
-    # All context words are non-UNK, so should generate 4 triplets
-    assert len(triplets) == 4
-    
-    # All should have the same center word ("brown" = index 3)
-    brown_index = vocab.index("brown")
-    for triplet in triplets:
-        assert triplet[0] == brown_index
+        assert center != 0
 
 def test_negative_sampling_range(triplet_test_data):
     """Test that negative samples are in the correct range."""

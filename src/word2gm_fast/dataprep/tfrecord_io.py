@@ -36,12 +36,9 @@ def write_triplets_to_tfrecord(
     """
     if compress and not output_path.endswith(".gz"):
         output_path += ".gz"
-
     options = tf.io.TFRecordOptions(compression_type="GZIP") if compress else None
-
     print(f"Writing TFRecord to: {output_path}")
     start = time.perf_counter()
-
     count = 0
     with tf.io.TFRecordWriter(output_path, options=options) as writer:
         for triplet in dataset.as_numpy_iterator():
@@ -53,11 +50,9 @@ def write_triplets_to_tfrecord(
             }))
             writer.write(example.SerializeToString())
             count += 1
-
     duration = time.perf_counter() - start
     print(f"Write complete. Triplets written: {count:,}")
     print(f"Write time: {duration:.2f} sec")
-    
     return count
 
 
@@ -88,9 +83,7 @@ def write_triplets_to_tfrecord_silent(
     """
     if compress and not output_path.endswith(".gz"):
         output_path += ".gz"
-
     options = tf.io.TFRecordOptions(compression_type="GZIP") if compress else None
-
     count = 0
     with tf.io.TFRecordWriter(output_path, options=options) as writer:
         for triplet in dataset.as_numpy_iterator():
@@ -102,7 +95,6 @@ def write_triplets_to_tfrecord_silent(
             }))
             writer.write(example.SerializeToString())
             count += 1
-    
     return count
 
 
@@ -201,17 +193,13 @@ def write_vocab_to_tfrecord(
     """
     if compress and not output_path.endswith(".gz"):
         output_path += ".gz"
-
     options = tf.io.TFRecordOptions(compression_type="GZIP") if compress else None
-
     print(f"Writing vocabulary TFRecord to: {output_path}")
     start = time.perf_counter()
-
     # Export the vocabulary table
     vocab_keys, vocab_values = vocab_table.export()
     vocab_keys_np = vocab_keys.numpy()
     vocab_values_np = vocab_values.numpy()
-
     count = 0
     with tf.io.TFRecordWriter(output_path, options=options) as writer:
         for word_bytes, word_id in zip(vocab_keys_np, vocab_values_np):
@@ -222,7 +210,6 @@ def write_vocab_to_tfrecord(
             }))
             writer.write(example.SerializeToString())
             count += 1
-
     duration = time.perf_counter() - start
     print(f"Vocabulary write complete. Words written: {count:,}")
     print(f"Write time: {duration:.2f} sec")
@@ -352,20 +339,14 @@ def save_pipeline_artifacts(
         Paths to the saved files and metadata including triplet count.
     """
     os.makedirs(output_dir, exist_ok=True)
-    
     ext = ".tfrecord.gz" if compress else ".tfrecord"
-    
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
-    
     print(f"Saving pipeline artifacts to: {output_dir}")
-    
     # Save vocabulary
     write_vocab_to_tfrecord(vocab_table, vocab_path, compress=compress)
-    
     # Save triplets and get count in one pass
     triplet_count = write_triplets_to_tfrecord(triplets_ds, triplets_path, compress=compress)
-    
     artifacts = {
         'vocab_path': vocab_path,
         'triplets_path': triplets_path,
@@ -374,7 +355,6 @@ def save_pipeline_artifacts(
         'compressed': compress,
         'output_dir': output_dir
     }
-    
     print("All artifacts saved successfully!")
     return artifacts
 

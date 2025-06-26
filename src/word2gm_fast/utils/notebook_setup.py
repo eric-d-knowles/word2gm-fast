@@ -169,7 +169,7 @@ def setup_testing_notebook(
     """
     Specialized setup for testing notebooks.
     
-    Configures GPU mode and imports test modules/classes.
+    Configures GPU mode and imports all test functions from each test module for programmatic access.
     
     Parameters
     ----------
@@ -183,23 +183,28 @@ def setup_testing_notebook(
         gpu_memory_growth=True,
     )
     
-    # Import test modules/classes from the correct path
-    from tests.test_corpus_to_dataset import TestCorpusToDataset
-    from tests.test_dataset_to_triplets import TestDatasetToTriplets
-    from tests.test_index_vocab import TestIndexVocab
-    from tests.test_tfrecord_io import TestTFRecordIO
-    from tests.test_word2gm_model import TestWord2GMModel
+    # Import all test functions from each test module
+    import tests.test_corpus_to_dataset as test_corpus_to_dataset_mod
+    import tests.test_dataset_to_triplets as test_dataset_to_triplets_mod
+    import tests.test_index_vocab as test_index_vocab_mod
+    import tests.test_tfrecord_io as test_tfrecord_io_mod
+    import tests.test_word2gm_model as test_word2gm_model_mod
     from word2gm_fast.utils.resource_summary import print_resource_summary
 
-    # Add test classes/utilities to setup_info
-    setup_info['TestCorpusToDataset'] = TestCorpusToDataset
-    setup_info['TestDatasetToTriplets'] = TestDatasetToTriplets
-    setup_info['TestIndexVocab'] = TestIndexVocab
-    setup_info['TestTFRecordIO'] = TestTFRecordIO
-    setup_info['TestWord2GMModel'] = TestWord2GMModel
+    # Add all test functions from each module to setup_info
+    for mod, key in [
+        (test_corpus_to_dataset_mod, 'test_corpus_to_dataset'),
+        (test_dataset_to_triplets_mod, 'test_dataset_to_triplets'),
+        (test_index_vocab_mod, 'test_index_vocab'),
+        (test_tfrecord_io_mod, 'test_tfrecord_io'),
+        (test_word2gm_model_mod, 'test_word2gm_model'),
+    ]:
+        for attr in dir(mod):
+            if attr.startswith('test_'):
+                setup_info[f'{key}.{attr}'] = getattr(mod, attr)
+
     setup_info['print_resource_summary'] = print_resource_summary
     setup_info['run_silent_subprocess'] = run_silent_subprocess
-    # Only print a single concise confirmation
     print("Testing environment ready!")
     return setup_info
 

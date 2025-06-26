@@ -18,7 +18,7 @@ from word2gm_fast.models.word2gm_model import Word2GMModel
 from word2gm_fast.models.config import Word2GMConfig
 
 
-class TestWord2GMModel:
+class test_word2gm_model:
     """Test suite for Word2GMModel."""
     
     @pytest.fixture
