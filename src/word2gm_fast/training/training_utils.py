@@ -1,7 +1,6 @@
 # training_utils.py
 
 import tensorflow as tf
-from utils.logging_utils import get_loggers, color
 
 def log_training_metrics(model, grads, step, summary_writer):
     """

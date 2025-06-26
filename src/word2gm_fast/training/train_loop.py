@@ -7,22 +7,14 @@ import numpy as np
 import tensorflow as tf
 from threading import Event
 
-from models.word2gm_model import Word2GMModel
-from config.config import TrainingConfig
-from training.tfrecord_io import load_triplets_from_tfrecord
-from training.build_vocab import load_vocab
-from training.training_utils import (
+from ..models.word2gm_model import Word2GMModel
+from ..models.config import Word2GMConfig
+from ..dataprep.tfrecord_io import read_triplets_from_tfrecord, read_vocab_from_tfrecord
+from .training_utils import (
     train_step, 
     log_training_metrics,
     summarize_dataset_pipeline
 )
-from utils.logging_utils import get_loggers, color
-from utils.benchmark_utils import (
-    monitor_resources,
-    benchmark_with_resource_log,
-    plot_resource_log
-)
-from utils.path_utils import create_output_paths
 
 
 # === TensorFlow config ===
