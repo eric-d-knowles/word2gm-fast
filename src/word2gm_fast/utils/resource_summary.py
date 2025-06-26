@@ -148,7 +148,7 @@ def print_resource_summary():
     """Print a comprehensive resource summary using monospace font in notebook."""
     output_lines = []
     output_lines.append("SYSTEM RESOURCE SUMMARY")
-    output_lines.append("=" * 50)
+    output_lines.append("=" * 60)
     
     # Basic system info
     hostname = get_hostname()
@@ -205,7 +205,7 @@ def print_resource_summary():
                 growth_str = f", Memory growth: {growth}" if growth is not None else ""
                 output_lines.append(f"      {name}{growth_str}")
     
-    output_lines.append("=" * 50)
+    output_lines.append("=" * 60)
     
     # Display as monospace, no background
     display(Markdown(f"<pre>{'\n'.join(output_lines)}</pre>"))
