@@ -118,18 +118,18 @@ def setup_data_preprocessing_notebook(
     setup_info['batch_prepare_training_data'] = batch_prepare_training_data
     setup_info['print_resource_summary'] = print_resource_summary
     
-    # Print concise setup confirmation with delays to prevent duplication
-    import sys
-    import time
+    # Build concise setup confirmation as single output
+    setup_lines = [
+        "Data preprocessing environment ready!",
+        f"Project root: {setup_info['project_root']}",
+        f"TensorFlow {setup_info['tensorflow'].__version__} (CPU-only mode)"
+    ]
     
-    time.sleep(0.01)
-    print("Data preprocessing environment ready!")
-    time.sleep(0.01)
-    print(f"Project root: {setup_info['project_root']}")
-    time.sleep(0.01)
-    print(f"TensorFlow {setup_info['tensorflow'].__version__} (CPU-only mode)")
+    # Single print to avoid duplication
+    print("\n".join(setup_lines))
     
     # Flush stdout to prevent output duplication
+    import sys
     sys.stdout.flush()
     
     return setup_info
@@ -165,18 +165,18 @@ def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
     setup_info['train_step'] = train_step
     setup_info['print_resource_summary'] = print_resource_summary
     
-    # Print concise setup confirmation with delays to prevent duplication
-    import sys
-    import time
+    # Build concise setup confirmation as single output
+    setup_lines = [
+        "Training environment ready!",
+        f"Project root: {setup_info['project_root']}",
+        f"TensorFlow {setup_info['tensorflow'].__version__} (GPU-enabled mode)"
+    ]
     
-    time.sleep(0.01)
-    print("Training environment ready!")
-    time.sleep(0.01)
-    print(f"Project root: {setup_info['project_root']}")
-    time.sleep(0.01)
-    print(f"TensorFlow {setup_info['tensorflow'].__version__} (GPU-enabled mode)")
+    # Single print to avoid duplication
+    print("\n".join(setup_lines))
     
     # Flush stdout to prevent output duplication
+    import sys
     sys.stdout.flush()
     
     return setup_info

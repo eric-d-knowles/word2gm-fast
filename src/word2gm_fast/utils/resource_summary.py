@@ -2,7 +2,25 @@
 System Resource Summary Utility
 
 Provides comprehensive system resource information for debugging and monitoring
-Word2GM training environments, including SLURM job allocation details and GPU info.
+Word2GM training environmentdef print_resource_summary():
+    """Print a comprehensive resource summary."""
+    import time
+    
+    # Try using IPython display instead of print to avoid duplication
+    try:
+        from IPython.display import display
+        use_display = True
+    except ImportError:
+        use_display = False
+    
+    def safe_print(text):
+        if use_display:
+            display(text)
+        else:
+            print(text)
+    
+    safe_print("SYSTEM RESOURCE SUMMARY")
+    safe_print("=" * 50)ding SLURM job allocation details and GPU info.
 """
 
 import os
@@ -145,47 +163,101 @@ def get_tensorflow_info():
 
 def print_resource_summary():
     """Print a comprehensive resource summary."""
-    import time
     
-    time.sleep(0.01)
-    print("SYSTEM RESOURCE SUMMARY")
-    time.sleep(0.01)
-    print("=" * 50)
+    # Build the entire output as a single string to avoid multiple print calls
+    output_lines = []
+    output_lines.append("SYSTEM RESOURCE SUMMARY")
+    output_lines.append("=" * 50)
     
     # Basic system info
     hostname = get_hostname()
-    print(f"Hostname: {hostname}")
+    output_lines.append(f"Hostname: {hostname}")
     
     # SLURM job info
     slurm_info = get_slurm_info()
-    print(f"\nJob Allocation:")
-    print(f"   CPUs: {slurm_info['cpus']}")
-    print(f"   Memory: {slurm_info['memory_gb']:.1f} GB")
-    print(f"   Partition: {slurm_info['actual_partition']}")
-    print(f"   Job ID: {slurm_info['job_id']}")
-    print(f"   Node list: {slurm_info['node_list']}")
+    output_lines.append("")
+    output_lines.append("Job Allocation:")
+    output_lines.append(f"   CPUs: {slurm_info['cpus']}")
+    output_lines.append(f"   Memory: {slurm_info['memory_gb']:.1f} GB")
+    output_lines.append(f"   Requested partitions: {slurm_info['requested_partitions']}")
+    output_lines.append(f"   Actually running on: {slurm_info['actual_partition']}")
+    output_lines.append(f"   Job ID: {slurm_info['job_id']}")
+    output_lines.append(f"   Node list: {slurm_info['node_list']}")
     
     # GPU information
     gpu_info = get_gpu_info()
-    print(f"\nGPU Information:")
+    output_lines.append("")
+    output_lines.append("GPU Information:")
     
     if not gpu_info['available']:
         if 'error' in gpu_info:
+            output_lines.append(f"   Error: {gpu_info['error']}")
+        else:
+            output_lines.append(f"   No CUDA GPUs detected")
+    else:
+        output_lines.append(f"   CUDA GPUs detected: {gpu_info['count']}")
+        for device in gpu_info['devices']:
+            output_lines.append(f"   GPU {device['index']}: {device['name']}")
+            output_lines.append(f"      Memory: {device['memory_used_gb']:.1f}/"
+                              f"{device['memory_total_gb']:.1f} GB "
+                              f"({device['memory_free_gb']:.1f} GB free)")
+            
+            if device['temperature_c'] is not None:
+                output_lines.append(f"      Temperature: {device['temperature_c']}°C")
+            
+            if device['gpu_utilization_percent'] is not None:
+                output_lines.append(f"      Utilization: GPU {device['gpu_utilization_percent']}%, "
+                                  f"Memory {device['memory_utilization_percent']}%")
+    
+    # TensorFlow GPU detection
+    tf_info = get_tensorflow_info()
+    output_lines.append("")
+    output_lines.append("TensorFlow GPU Detection:")
+    if 'error' in tf_info:
+        output_lines.append(f"   Error: {tf_info['error']}")
+    else:
+        output_lines.append(f"   TensorFlow detects {tf_info['gpu_count']} GPU(s)")
+        output_lines.append(f"   Built with CUDA: {tf_info['built_with_cuda']}")
+        
+        if tf_info['gpu_count'] > 0:
+            for i, name in enumerate(tf_info['gpu_names']):
+                growth = tf_info['memory_growth'][i] if i < len(tf_info['memory_growth']) else None
+                growth_str = f", Memory growth: {growth}" if growth is not None else ""
+                output_lines.append(f"      {name}{growth_str}")
+    
+    output_lines.append("=" * 50)
+    
+    # Single print statement to avoid duplication
+    print("\n".join(output_lines))
+    
+    # Flush stdout to prevent output duplication
+    import sys
+    sys.stdout.flush()
+    
+    if not gpu_info['available']:
+        if 'error' in gpu_info:
+            time.sleep(0.50)
             print(f"   Error: {gpu_info['error']}")
         else:
+            time.sleep(0.50)
             print(f"   No CUDA GPUs detected")
     else:
+        time.sleep(0.50)
         print(f"   CUDA GPUs detected: {gpu_info['count']}")
         for device in gpu_info['devices']:
+            time.sleep(0.50)
             print(f"   GPU {device['index']}: {device['name']}")
+            time.sleep(0.50)
             print(f"      Memory: {device['memory_used_gb']:.1f}/"
                   f"{device['memory_total_gb']:.1f} GB "
                   f"({device['memory_free_gb']:.1f} GB free)")
             
             if device['temperature_c'] is not None:
+                time.sleep(0.50)
                 print(f"      Temperature: {device['temperature_c']}°C")
             
             if device['gpu_utilization_percent'] is not None:
+                time.sleep(0.50)
                 print(f"      Utilization: GPU {device['gpu_utilization_percent']}%, "
                       f"Memory {device['memory_utilization_percent']}%")
     
