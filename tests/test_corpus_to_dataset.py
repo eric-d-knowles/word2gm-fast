@@ -8,14 +8,7 @@ import pytest
 import tensorflow as tf
 from src.word2gm_fast.dataprep.corpus_to_dataset import make_dataset
 
-@pytest.fixture(scope="module")
-def summary_collector(request):
-    summaries = []
-    yield summaries
-    def print_summaries():
-        for s in summaries:
-            print(s)
-    request.addfinalizer(print_summaries)
+
 
 @pytest.fixture
 def all_5gram_lines():
@@ -74,7 +67,7 @@ def all_5gram_lines():
     ]
     return lines, valid_lines
 
-def test_corpus_to_dataset(tmp_path, all_5gram_lines, summary_collector):
+def test_corpus_to_dataset(tmp_path, all_5gram_lines):
     """Test that only valid 5-grams are retained and summary is correct."""
     lines, valid_lines = all_5gram_lines
     temp_file = tmp_path / "test_5grams.txt"
@@ -87,6 +80,4 @@ def test_corpus_to_dataset(tmp_path, all_5gram_lines, summary_collector):
     assert summary["retained"] == 15
     assert summary["rejected"] == 17
     assert summary["total"] == 32
-    msg = "[TEST -- corpus_to_dataset] test_corpus_to_dataset: Only valid 5-grams kept (center word and at least one context word not UNK); correct summary stats"
-    print(msg)  # DEBUG: print directly to check output capture
-    summary_collector.append(msg)
+

@@ -18,14 +18,6 @@ from word2gm_fast.models.word2gm_model import Word2GMModel
 from word2gm_fast.models.config import Word2GMConfig
 
 
-@pytest.fixture(scope="module")
-def summary_collector(request):
-    summaries = []
-    yield summaries
-    def print_summaries():
-        for s in summaries:
-            print(s)
-    request.addfinalizer(print_summaries)
 
 
 class test_word2gm_model:
@@ -65,7 +57,7 @@ class test_word2gm_model:
             batch_size=4
         )
     
-    def test_model_initialization_basic(self, basic_config, summary_collector):
+    def test_model_initialization_basic(self, basic_config):
         """Test basic model initialization."""
         model = Word2GMModel(basic_config)
         
@@ -79,9 +71,9 @@ class test_word2gm_model:
         assert model.logsigmas.trainable
         assert model.mixture.trainable
 
-        summary_collector.append("[TEST -- word2gm_model] test_model_initialization_basic: Model parameters initialized and trainable")
+
     
-    def test_model_initialization_diagonal(self, diagonal_config, summary_collector):
+    def test_model_initialization_diagonal(self, diagonal_config):
         """Test model initialization with diagonal covariances."""
         model = Word2GMModel(diagonal_config)
         
@@ -90,9 +82,9 @@ class test_word2gm_model:
         assert model.logsigmas.shape == (100, 2, 10)  # Diagonal
         assert model.mixture.shape == (100, 2)
 
-        summary_collector.append("[TEST -- word2gm_model] test_model_initialization_diagonal: Diagonal covariance shapes correct")
+
     
-    def test_model_initialization_asymmetric(self, asymmetric_config, summary_collector):
+    def test_model_initialization_asymmetric(self, asymmetric_config):
         """Test model initialization with asymmetric relationships."""
         model = Word2GMModel(asymmetric_config)
         
@@ -106,9 +98,9 @@ class test_word2gm_model:
         assert model.logsigmas_out.shape == (100, 2, 1)
         assert model.mixture_out.shape == (100, 2)
 
-        summary_collector.append("[TEST -- word2gm_model] test_model_initialization_asymmetric: Asymmetric output parameters exist and have correct shapes")
+
     
-    def test_get_word_distributions_basic(self, basic_config, summary_collector):
+    def test_get_word_distributions_basic(self, basic_config):
         """Test getting word distributions."""
         model = Word2GMModel(basic_config)
         word_ids = tf.constant([0, 1, 2, 3])
@@ -127,9 +119,9 @@ class test_word2gm_model:
         # Check that variances are positive
         assert tf.reduce_all(vars > 0)
 
-        summary_collector.append("[TEST -- word2gm_model] test_get_word_distributions_basic: Output shapes and normalization correct")
+
     
-    def test_get_word_distributions_diagonal(self, diagonal_config, summary_collector):
+    def test_get_word_distributions_diagonal(self, diagonal_config):
         """Test getting word distributions with diagonal covariances."""
         model = Word2GMModel(diagonal_config)
         word_ids = tf.constant([0, 1, 2, 3])
@@ -141,9 +133,9 @@ class test_word2gm_model:
         assert vars.shape == (4, 2, 10)
         assert weights.shape == (4, 2)
 
-        summary_collector.append("[TEST -- word2gm_model] test_get_word_distributions_diagonal: Diagonal output shapes correct")
+
     
-    def test_get_word_distributions_asymmetric(self, asymmetric_config, summary_collector):
+    def test_get_word_distributions_asymmetric(self, asymmetric_config):
         """Test getting word distributions with asymmetric relationships."""
         model = Word2GMModel(asymmetric_config)
         word_ids = tf.constant([0, 1, 2, 3])
@@ -161,9 +153,9 @@ class test_word2gm_model:
         # Check that they're different (with high probability)
         assert not tf.reduce_all(tf.equal(mus_in, mus_out))
 
-        summary_collector.append("[TEST -- word2gm_model] test_get_word_distributions_asymmetric: Asymmetric input/output distributions differ as expected")
+
     
-    def test_expected_likelihood_kernel_shape(self, basic_config, summary_collector):
+    def test_expected_likelihood_kernel_shape(self, basic_config):
         """Test expected likelihood kernel output shape."""
         model = Word2GMModel(basic_config)
         
@@ -188,9 +180,9 @@ class test_word2gm_model:
         # Check that kernel values are positive
         assert tf.reduce_all(kernel > 0)
 
-        summary_collector.append("[TEST -- word2gm_model] test_expected_likelihood_kernel_shape: Output shape and positivity correct")
+
     
-    def test_expected_likelihood_kernel_symmetry(self, basic_config, summary_collector):
+    def test_expected_likelihood_kernel_symmetry(self, basic_config):
         """Test that ELK is NOT symmetric (this is expected behavior)."""
         model = Word2GMModel(basic_config)
         
@@ -214,9 +206,9 @@ class test_word2gm_model:
         # Should NOT be equal (asymmetric by design)
         assert not tf.reduce_all(tf.equal(kernel_12, kernel_21))
 
-        summary_collector.append("[TEST -- word2gm_model] test_expected_likelihood_kernel_symmetry: ELK is asymmetric as expected")
+
     
-    def test_forward_pass_shape(self, basic_config, summary_collector):
+    def test_forward_pass_shape(self, basic_config):
         """Test forward pass (loss computation)."""
         model = Word2GMModel(basic_config)
         
@@ -234,9 +226,9 @@ class test_word2gm_model:
         # Check that loss is non-negative (max-margin loss)
         assert loss >= 0
 
-        summary_collector.append("[TEST -- word2gm_model] test_forward_pass_shape: Loss is scalar and non-negative")
+
     
-    def test_tf_function_compatibility(self, basic_config, summary_collector):
+    def test_tf_function_compatibility(self, basic_config):
         """Test that model works with @tf.function decoration."""
         model = Word2GMModel(basic_config)
         
@@ -259,9 +251,9 @@ class test_word2gm_model:
         assert len(grads) == len(model.trainable_variables)
         assert all(grad is not None for grad in grads)
 
-        summary_collector.append("[TEST -- word2gm_model] test_tf_function_compatibility: Model works with @tf.function and gradients computed")
+
     
-    def test_get_word_embedding(self, basic_config, summary_collector):
+    def test_get_word_embedding(self, basic_config):
         """Test single word embedding extraction."""
         model = Word2GMModel(basic_config)
         
@@ -278,9 +270,9 @@ class test_word2gm_model:
         if not np.allclose(embedding_comp0, embedding_mean, rtol=1e-3):
             assert True  # Expected case
 
-        summary_collector.append("[TEST -- word2gm_model] test_get_word_embedding: Single component and mixture mean embeddings extracted")
+
     
-    def test_edge_cases(self, basic_config, summary_collector):
+    def test_edge_cases(self, basic_config):
         """Test edge cases and error conditions."""
         model = Word2GMModel(basic_config)
         
@@ -294,9 +286,9 @@ class test_word2gm_model:
         mus, vars, weights = model.get_word_distributions(word_ids)
         assert mus.shape == (50, 2, 10)
 
-        summary_collector.append("[TEST -- word2gm_model] test_edge_cases: Handles single and large batch inputs")
+
     
-    def test_parameter_updates(self, basic_config, summary_collector):
+    def test_parameter_updates(self, basic_config):
         """Test that parameters update during training."""
         model = Word2GMModel(basic_config)
         optimizer = tf.keras.optimizers.SGD(learning_rate=0.1)
@@ -319,7 +311,7 @@ class test_word2gm_model:
         updated_mus = model.mus.numpy()
         assert not np.allclose(initial_mus, updated_mus, rtol=1e-6)
 
-        summary_collector.append("[TEST -- word2gm_model] test_parameter_updates: Model parameters update after training step")
+
 
 
 class TestWord2GMModelGPU:
@@ -329,7 +321,7 @@ class TestWord2GMModelGPU:
         not tf.config.list_physical_devices('GPU'),
         reason="GPU not available"
     )
-    def test_gpu_compatibility(self, summary_collector):
+    def test_gpu_compatibility(self):
         """Test that model works on GPU."""
         config = Word2GMConfig(
             vocab_size=100,
@@ -350,13 +342,13 @@ class TestWord2GMModelGPU:
             loss = model((word_ids, pos_ids, neg_ids), training=True)
             assert loss.shape == ()
 
-        summary_collector.append("[TEST -- word2gm_model] test_gpu_compatibility: Model runs on GPU without errors")
+
 
 
 @pytest.mark.parametrize("spherical", [True, False])
 @pytest.mark.parametrize("wout", [True, False])
 @pytest.mark.parametrize("num_mixtures", [1, 2, 3])
-def test_model_configurations(spherical, wout, num_mixtures, summary_collector):
+def test_model_configurations(spherical, wout, num_mixtures):
     """Test various model configurations."""
     config = Word2GMConfig(
         vocab_size=50,
@@ -366,19 +358,15 @@ def test_model_configurations(spherical, wout, num_mixtures, summary_collector):
         wout=wout,
         batch_size=2
     )
-    
     model = Word2GMModel(config)
-    
     # Test that model can run forward pass
     word_ids = tf.constant([0, 1])
     pos_ids = tf.constant([10, 11])
     neg_ids = tf.constant([20, 21])
-    
     loss = model((word_ids, pos_ids, neg_ids), training=True)
     assert loss.shape == ()
     assert tf.math.is_finite(loss)
 
-    summary_collector.append(f"[TEST -- word2gm_model] test_model_configurations: Model runs with spherical={spherical}, wout={wout}, num_mixtures={num_mixtures}")
 
 
 if __name__ == "__main__":

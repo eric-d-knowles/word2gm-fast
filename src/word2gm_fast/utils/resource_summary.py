@@ -12,6 +12,7 @@ import psutil
 import pynvml
 import tensorflow as tf
 from IPython.display import display, Markdown
+import re
 
 
 def get_hostname():
@@ -34,7 +35,6 @@ def get_slurm_info():
     if mem_per_node_mb:
         slurm_info['memory_gb'] = int(mem_per_node_mb) / 1024
     else:
-        # Fallback to system memory
         slurm_info['memory_gb'] = psutil.virtual_memory().total / (1024**3)
     
     # Partition information - get both requested and actual
@@ -45,20 +45,45 @@ def get_slurm_info():
     # Get actual partition by SSH'ing to login node
     job_id = os.environ.get('SLURM_JOB_ID')
     if job_id:
-        try:
-            # SSH to greene-login and run squeue to get actual partition
-            ssh_cmd = ['ssh', 'greene-login', 'squeue', '-j', job_id, '-h', '-o', '%P']
-            result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=10)
-            
-            if result.returncode == 0:
-                slurm_info['actual_partition'] = result.stdout.strip()
-            else:
-                slurm_info['actual_partition'] = f"SSH failed: {result.stderr.strip()}"
+        ssh_cmd = ['ssh', 'greene-login', 'squeue', '-j', job_id, '-h', '-o', '%P']
+        for attempt in range(2):  # Try at most twice
+            try:
+                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=10)
                 
-        except subprocess.TimeoutExpired:
-            slurm_info['actual_partition'] = "SSH timeout"
-        except Exception as e:
-            slurm_info['actual_partition'] = f"SSH error: {e}"
+                if result.returncode == 0:
+                    slurm_info['actual_partition'] = result.stdout.strip()
+                    break
+                
+                # Check for host key warning
+                if "REMOTE HOST IDENTIFICATION HAS CHANGED" in result.stderr:
+                    match = re.search(r"Offending (?:ECDSA|RSA|ED25519) key in (.*):(\d+)", result.stderr)
+                    if match:
+                        known_hosts_path = match.group(1)
+                        line_number = int(match.group(2))
+                        
+                        # Remove the offending line
+                        with open(known_hosts_path, "r") as f:
+                            lines = f.readlines()
+                        with open(known_hosts_path, "w") as f:
+                            for i, line in enumerate(lines, 1):
+                                if i != line_number:
+                                    f.write(line)
+                        continue  # Retry SSH
+                    
+                    else:
+                        slurm_info['actual_partition'] = "SSH host key error: could not parse offending line"
+                        break
+                
+                else:
+                    slurm_info['actual_partition'] = f"SSH failed: {result.stderr.strip()}"
+                    break
+            
+            except subprocess.TimeoutExpired:
+                slurm_info['actual_partition'] = "SSH timeout"
+                break
+            except Exception as e:
+                slurm_info['actual_partition'] = f"SSH error: {e}"
+                break
     else:
         slurm_info['actual_partition'] = 'N/A (not in SLURM job)'
     
