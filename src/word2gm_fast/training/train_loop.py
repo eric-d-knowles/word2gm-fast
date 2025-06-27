@@ -11,7 +11,7 @@ import time
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import mixed_precision
-from threading import Event
+
 
 from ..models.word2gm_model import Word2GMModel
 from ..models.config import Word2GMConfig
@@ -19,11 +19,13 @@ from ..dataprep.tfrecord_io import (
     read_triplets_from_tfrecord,
     read_vocab_from_tfrecord
 )
-from .training_utils import (
     train_step, 
     log_training_metrics,
     summarize_dataset_pipeline
 )
+
+# Import the new ResourceMonitor
+from .resource_monitor import ResourceMonitor
 
 
 # === TensorFlow config ===
@@ -165,7 +167,6 @@ def run_notebook_training(
     wout=False,
     tensorboard_log_path=None,
     monitor_interval=10,
-    benchmark_steps=0,
     profile=False
 ):
     """
@@ -233,7 +234,6 @@ def run_notebook_training(
     args.wout = wout
     args.tensorboard_log_path = tensorboard_log_path or os.path.join(save_path, "tensorboard")
     args.monitor_interval = monitor_interval
-    args.benchmark_steps = benchmark_steps
     args.profile = profile
 
     # === Dataset structure ===
@@ -261,167 +261,44 @@ def run_notebook_training(
         )
     )
 
-    # === Training loop ===
-    for epoch in range(args.epochs_to_train):
-        print(f"\n📘 Epoch {epoch + 1}/{args.epochs_to_train}")
-        epoch_start = time.time()
-
-        epoch_loss = train_one_epoch(
-            model, optimizer, args.training_dataset,
-            summary_writer=summary_writer, epoch=epoch
-        )
-
-        epoch_time = time.time() - epoch_start
-        print(f"📉 Loss at epoch {epoch + 1}: {epoch_loss.numpy():.5f}")
-        print(f"🕒 Epoch time: {epoch_time:.2f} sec")
-        # Save model after each epoch
-        os.makedirs(args.save_path, exist_ok=True)
-        model.save_weights(
-            os.path.join(args.save_path, f"model_weights_epoch{epoch+1}.weights.h5")
-        )
-
-    # === Report and log total time ===
-    total_time = time.time() - start_time
-    print(f"⏱️ Total training time: {total_time:.2f} seconds")
-
-    with summary_writer.as_default():
-        tf.summary.scalar("total_training_time_seconds", total_time, step=0)
-
-    summary_writer.flush()
-    # === Setup loggers ===
-    log, _, log_resource = get_loggers(
-        log_path=args.log_file_path,
-        resource_log_path=args.resource_log_path
+    # === Start resource monitoring ===
+    resource_monitor = ResourceMonitor(
+        interval=monitor_interval,
+        tensorboard_writer=summary_writer,
+        print_to_notebook=True
     )
+    resource_monitor.start()
 
-    # === Dataset structure ===
-    summarize_dataset_pipeline(args.training_dataset, logger=log)
+    try:
+        # === Training loop ===
+        for epoch in range(args.epochs_to_train):
+            print(f"\n📘 Epoch {epoch + 1}/{args.epochs_to_train}")
+            epoch_start = time.time()
 
-    # === Log metadata ===
-    log.info(color("📋 Run metadata", "magenta"))
-    log.info(f"  🗓️ Year: {args.year}")
-    log.info(f"  🧠 Embedding size: {args.embedding_size}")
-    log.info(f"  🔢 Mixtures: {args.num_mixtures}")
-    log.info(f"  🌐 Spherical: {args.spherical}")
-    log.info(f"  📈 Learning rate: {args.learning_rate}")
-    log.info(
-        f"  ⚙️ Optimizer: {'Adagrad' if args.adagrad else 'SGD'}"
-    )
-    log.info(
-        f"  🧹 Norm clip: {args.normclip} (cap={args.norm_cap})"
-    )
-    log.info(
-        f"  🧊 Sigma bounds: [{args.lower_sig}, {args.upper_sig}]"
-    )
-    log.info(f"  📚 Vocab size: {args.vocab_size}")
-    log.info(f"  📦 Save path: {args.save_path}")
-    log.info(f"  📊 TensorBoard: {args.tensorboard_log_path}")
-    log.info(f"  📁 Training log: {args.log_file_path}")
-    log.info(f"  📁 Resource log: {args.resource_log_path}")
-    log.info(color("-" * 60, "magenta"))
-
-    log.info(color("🚀 Starting Word2GM training", "green"))
-    start_time = time.time()
-
-    # === Create TensorBoard writer ===
-    os.makedirs(args.tensorboard_log_path, exist_ok=True)
-    summary_writer = tf.summary.create_file_writer(
-        str(args.tensorboard_log_path)
-    )
-    log.info(
-        color(
-            f"📝 Writing TensorBoard logs to {args.tensorboard_log_path}",
-            "cyan"
-        )
-    )
-
-    # === Initialize model and optimizer ===
-    model = Word2GMModel(args, args.vocab_size)
-    optimizer = build_optimizer(args)
-
-    # === Build model once with dummy input ===
-    dummy_input = next(iter(args.training_dataset))
-    _ = model((dummy_input[0], dummy_input[1], dummy_input[2]), training=True)
-    _ = optimizer.apply_gradients(
-        zip(
-            [tf.zeros_like(v) for v in model.trainable_variables],
-            model.trainable_variables
-        )
-    )
-
-    # === Start system resource monitor ===
-    stop_event = Event()
-    monitor_thread = monitor_resources(
-        stop_event, args.monitor_interval, logger=log_resource
-    )
-
-    # === Training loop ===
-    for epoch in range(args.epochs_to_train):
-        log.info(color(f"📘 Epoch {epoch + 1}/{args.epochs_to_train}", "cyan"))
-
-        epoch_start = time.time()
-
-        if epoch == 1 and args.benchmark_steps > 0:
-            benchmark_with_resource_log(
-                args.training_dataset, model, optimizer,
-                normclip=model.config.normclip,
-                norm_cap=model.config.norm_cap,
-                lower_sig=model.config.lower_sig,
-                upper_sig=model.config.upper_sig,
-                wout=model.config.wout,
-                resource_log_path=args.resource_log_path,
-                steps=args.benchmark_steps
+            epoch_loss = train_one_epoch(
+                model, optimizer, args.training_dataset,
+                summary_writer=summary_writer, epoch=epoch
             )
-            
-        if epoch == 2 and args.profile:
-            tf.profiler.experimental.start(str(args.tensorboard_log_path))
-            
-        epoch_loss = train_one_epoch(
-            model, optimizer, args.training_dataset,
-            summary_writer=summary_writer, epoch=epoch
-        )
 
-        if epoch == 2 and args.profile:
-            tf.profiler.experimental.stop()
-
-        epoch_time = time.time() - epoch_start  # ⬅️ Measure here
-        log.info(
-            color(
-                f"📉 Loss at epoch {epoch + 1}: {epoch_loss.numpy():.5f}",
-                "yellow"
+            epoch_time = time.time() - epoch_start
+            print(f"📉 Loss at epoch {epoch + 1}: {epoch_loss.numpy():.5f}")
+            print(f"🕒 Epoch time: {epoch_time:.2f} sec")
+            # Save model after each epoch
+            os.makedirs(args.save_path, exist_ok=True)
+            model.save_weights(
+                os.path.join(args.save_path, f"model_weights_epoch{epoch+1}.weights.h5")
             )
-        )
-        log.info(
-            color(
-                f"🕒 Epoch time: {epoch_time:.2f} sec",
-                "blue"
-            )
-        )
-        
-    # === Save model ===
-    os.makedirs(args.save_path, exist_ok=True)
-    log.info(color(f"💾 Saving model to: {args.save_path}", "green"))
-    model.save_weights(
-        os.path.join(args.save_path, "model_weights.weights.h5")
-    )
 
-    # === Shutdown monitoring ===
-    log.info(color("✅ Training complete. Shutting down monitor.", "green"))
-    stop_event.set()
-    monitor_thread.join()
+        # === Report and log total time ===
+        total_time = time.time() - start_time
+        print(f"⏱️ Total training time: {total_time:.2f} seconds")
 
-    # === Report and log total time ===
-    total_time = time.time() - start_time
-    log.info(
-        color(f"⏱️ Total training time: {total_time:.2f} seconds", "magenta")
-    )
+        with summary_writer.as_default():
+            tf.summary.scalar("total_training_time_seconds", total_time, step=0)
 
-    with summary_writer.as_default():
-        tf.summary.scalar("total_training_time_seconds", total_time, step=0)
-
-    # === Plot resource usage ===
-    plot_resource_log(
-        args.resource_log_path, save_dir=args.log_dir
-    )
-
-    summary_writer.flush()
+        summary_writer.flush()
+    finally:
+        # === Stop resource monitoring ===
+        resource_monitor.stop()
+        resource_monitor.join()
+    # ...existing code...
