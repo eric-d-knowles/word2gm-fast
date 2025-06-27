@@ -250,6 +250,9 @@ def train_word2gm(
     return model
 
 
+from .notebook_training import run_notebook_training
+
+
 def run_notebook_training(
     artifacts_dir,
     output_dir,
