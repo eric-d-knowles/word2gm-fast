@@ -77,7 +77,10 @@ def train_step(
     with tf.GradientTape() as tape:
         loss = model((word_idxs, pos_idxs, neg_idxs), training=True)
     grads = tape.gradient(loss, variables)
-    optimizer.apply_gradients(zip(grads, variables))
+    # Filter out None gradients
+    grads_and_vars = [(g, v) for g, v in zip(grads, variables) if g is not None]
+    if grads_and_vars:
+        optimizer.apply_gradients(grads_and_vars)
     if normclip:
         clipped_mu = tf.clip_by_norm(model.mus, clip_norm=norm_cap, axes=[-1])
         model.mus.assign(clipped_mu)
@@ -86,12 +89,12 @@ def train_step(
         clipped_sigma = tf.clip_by_value(model.logsigmas, log_min, log_max)
         model.logsigmas.assign(clipped_sigma)
         if wout:
-        clipped_mu_out = tf.clip_by_norm(
-            model.mus_out, clip_norm=norm_cap, axes=[-1]
-        )
-        clipped_sigma_out = tf.clip_by_value(
-            model.logsigmas_out, log_min, log_max
-        )
+            clipped_mu_out = tf.clip_by_norm(
+                model.mus_out, clip_norm=norm_cap, axes=[-1]
+            )
+            clipped_sigma_out = tf.clip_by_value(
+                model.logsigmas_out, log_min, log_max
+            )
             model.mus_out.assign(clipped_mu_out)
             model.logsigmas_out.assign(clipped_sigma_out)
     return loss, grads
