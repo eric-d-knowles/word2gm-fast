@@ -8,7 +8,6 @@ from src.word2gm_fast.dataprep.index_vocab import make_vocab, build_vocab_table
 
 
 
-
 @pytest.fixture
 def vocab_dataset():
     lines = [

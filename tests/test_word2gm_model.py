@@ -19,7 +19,6 @@ from word2gm_fast.models.config import Word2GMConfig
 
 
 
-
 class test_word2gm_model:
     """Test suite for Word2GMModel."""
     
