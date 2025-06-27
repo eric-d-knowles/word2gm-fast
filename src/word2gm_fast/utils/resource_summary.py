@@ -186,7 +186,7 @@ def print_resource_summary():
     output_lines.append(f"   CPUs: {slurm_info['cpus']}")
     output_lines.append(f"   Memory: {slurm_info['memory_gb']:.1f} GB")
     output_lines.append(f"   Requested partitions: {slurm_info['requested_partitions']}")
-    output_lines.append(f"   Actually running on: {slurm_info['actual_partition']}")
+    output_lines.append(f"   Running on: {slurm_info['actual_partition']}")
     output_lines.append(f"   Job ID: {slurm_info['job_id']}")
     output_lines.append(f"   Node list: {slurm_info['node_list']}")
     
