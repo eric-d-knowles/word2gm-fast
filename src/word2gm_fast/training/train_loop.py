@@ -79,7 +79,8 @@ def train_one_epoch(model, optimizer, dataset, summary_writer=None, epoch=0):
     tf.Tensor
         The average loss for the epoch.
     """
-    total_loss = 0.0
+    # Initialize total_loss with the model's compute dtype or float16 for mixed precision
+    total_loss = tf.constant(0.0, dtype=getattr(model, 'compute_dtype', tf.float16))
     num_batches = 0
     nonzero_batches = 0
 
@@ -94,7 +95,9 @@ def train_one_epoch(model, optimizer, dataset, summary_writer=None, epoch=0):
                 wout=model.config.wout
             )
 
-        total_loss += loss
+        if total_loss is None:
+            total_loss = tf.cast(0.0, dtype=loss.dtype)
+        total_loss += tf.cast(loss, dtype=total_loss.dtype)
         num_batches += 1
         nonzero_batches += tf.cast(loss > 0, tf.int32)
 
@@ -118,10 +121,6 @@ def train_one_epoch(model, optimizer, dataset, summary_writer=None, epoch=0):
                 )
 
                 if step % 500 == 0:
-                    log_training_metrics(
-                        model, grads, step=current_step,
-                        summary_writer=summary_writer
-                    )
                     tf.summary.histogram(
                         "center_mean_norms",
                         tf.norm(model.mus, axis=-1),
@@ -138,7 +137,7 @@ def train_one_epoch(model, optimizer, dataset, summary_writer=None, epoch=0):
                         step=current_step
                     )
 
-    avg_loss = total_loss / tf.cast(tf.maximum(1, num_batches), tf.float32)
+    avg_loss = total_loss / tf.cast(tf.maximum(1, num_batches), total_loss.dtype)
 
     if summary_writer:
         with summary_writer.as_default():

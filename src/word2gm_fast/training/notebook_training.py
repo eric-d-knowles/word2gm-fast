@@ -54,6 +54,9 @@ def run_notebook_training(
     args.tensorboard_log_path = tensorboard_log_path or os.path.join(save_path, "tensorboard")
     args.monitor_interval = monitor_interval
     args.profile = profile
+    args.var_scale = getattr(args, 'var_scale', 0.05)
+    args.loss_epsilon = getattr(args, 'loss_epsilon', 1e-8)
+    args.max_pe = getattr(args, 'max_pe', False)
 
     summarize_dataset_pipeline(args.training_dataset)
 
@@ -64,7 +67,7 @@ def run_notebook_training(
     summary_writer = tf.summary.create_file_writer(str(args.tensorboard_log_path))
     print(f"📝 Writing TensorBoard logs to {args.tensorboard_log_path}")
 
-    model = Word2GMModel(args, args.vocab_size)
+    model = Word2GMModel(args)
     optimizer = build_optimizer(args)
 
     dummy_input = next(iter(args.training_dataset))
@@ -78,9 +81,9 @@ def run_notebook_training(
 
     resource_monitor = ResourceMonitor(
         interval=monitor_interval,
-        tensorboard_writer=summary_writer,
-        print_to_notebook=True
+        summary_writer=summary_writer
     )
+    resource_monitor.print_to_notebook = True
     resource_monitor.start()
 
     try:
@@ -110,4 +113,3 @@ def run_notebook_training(
         summary_writer.flush()
     finally:
         resource_monitor.stop()
-        resource_monitor.join()
