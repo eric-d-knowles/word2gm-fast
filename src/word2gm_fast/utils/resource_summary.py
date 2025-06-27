@@ -222,13 +222,13 @@ def print_resource_summary():
     if 'error' in tf_info:
         output_lines.append(f"   Error: {tf_info['error']}")
     else:
-        output_lines.append(f"   TensorFlow detects {tf_info.get('gpu_count', 'N/A')} GPU(s)")
-        output_lines.append(f"   Built with CUDA: {tf_info.get('built_with_cuda', 'N/A')}")
-        if tf_info.get('gpu_count', 0) > 0:
+        output_lines.append(f"   TensorFlow detects {tf_info.get('gpu_devices', 'N/A')} GPU(s)")
+        if tf_info.get('gpu_devices', 0) > 0:
             for i, name in enumerate(tf_info.get('gpu_names', [])):
-                growth = tf_info.get('memory_growth', [None]*tf_info.get('gpu_count', 0))[i] if 'memory_growth' in tf_info else None
+                growth = tf_info.get('memory_growth', [None]*tf_info.get('gpu_devices', 0))[i] if 'memory_growth' in tf_info else None
                 growth_str = f", Memory growth: {growth}" if growth is not None else ""
                 output_lines.append(f"      {name}{growth_str}")
+        output_lines.append(f"   Built with CUDA: {tf_info.get('built_with_cuda', 'N/A')}")
     
     output_lines.append("=" * 60)
     
