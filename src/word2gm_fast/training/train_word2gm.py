@@ -23,7 +23,7 @@ if str(src_path) not in sys.path:
 
 from word2gm_fast.models.word2gm_model import Word2GMModel
 from word2gm_fast.models.config import Word2GMConfig
-from word2gm_fast.dataprep.tfrecord_io import (
+from word2gm_fast.utils.tfrecord_io import (
     read_triplets_from_tfrecord,
     read_vocab_from_tfrecord
 )

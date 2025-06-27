@@ -15,14 +15,11 @@ from tensorflow.keras import mixed_precision
 
 from ..models.word2gm_model import Word2GMModel
 from ..models.config import Word2GMConfig
-from ..dataprep.tfrecord_io import (
+from ..utils.tfrecord_io import (
     read_triplets_from_tfrecord,
     read_vocab_from_tfrecord
 )
-    train_step, 
-    log_training_metrics,
-    summarize_dataset_pipeline
-)
+
 
 # Import the new ResourceMonitor
 from .resource_monitor import ResourceMonitor
@@ -301,4 +298,3 @@ def run_notebook_training(
         # === Stop resource monitoring ===
         resource_monitor.stop()
         resource_monitor.join()
-    # ...existing code...

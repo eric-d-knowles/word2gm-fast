@@ -1,7 +1,7 @@
 """
 Unit tests for TFRecord I/O utilities (pytest style).
 
-Tests all functionality in src.word2gm_fast.dataprep.tfrecord_io including:
+Tests all functionality in src.word2gm_fast.utils.tfrecord_io including:
 - Triplet serialization and loading
 - Vocabulary serialization and loading (including optimized version)
 - Pipeline artifact save/load
@@ -18,7 +18,7 @@ from typing import List, Tuple
 
 
 
-from src.word2gm_fast.dataprep.tfrecord_io import (
+from src.word2gm_fast.utils.tfrecord_io import (
     write_triplets_to_tfrecord,
     load_triplets_from_tfrecord,
     parse_triplet_example,

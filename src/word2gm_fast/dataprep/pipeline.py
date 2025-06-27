@@ -119,7 +119,7 @@ def prepare_training_data(
     from .corpus_to_dataset import make_dataset
     from .index_vocab import make_vocab
     from .dataset_to_triplets import build_skipgram_triplets
-    from .tfrecord_io import write_triplets_to_tfrecord_silent, write_vocab_to_tfrecord
+    from ..utils.tfrecord_io import write_triplets_to_tfrecord_silent, write_vocab_to_tfrecord
     
     # Validate inputs
     corpus_path = os.path.join(corpus_dir, corpus_file)
