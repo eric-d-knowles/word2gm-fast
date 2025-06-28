@@ -110,22 +110,28 @@ def summarize_dataset_pipeline(ds, logger=None):
             ds = ds._variant_tracker._dataset
         return ds
 
-    def describe(ds, indent=0):
+    def collect_pipeline(ds, stack=None):
+        if stack is None:
+            stack = []
         name = type(ds).__name__
-        line = "  " * indent + f"\U0001f539 {name}"
-        if logger:
-            logger.info(line)
-        else:
-            print(line)
+        stack.append(name)
+        # Recursively collect input datasets
         if hasattr(ds, '_input_dataset'):
-            describe(ds._input_dataset, indent + 1)
+            collect_pipeline(ds._input_dataset, stack)
         elif hasattr(ds, '_input_datasets'):
             for sub in ds._input_datasets:
-                describe(sub, indent + 1)
+                collect_pipeline(sub, stack)
+        return stack
 
-    if logger:
-        logger.info("\U0001f50d Dataset pipeline structure:")
-    else:
-        print("\U0001f50d Dataset pipeline structure:")
     ds_unwrapped = unwrap(ds)
-    describe(ds_unwrapped)
+    pipeline = collect_pipeline(ds_unwrapped, stack=[])
+    # The stack is from last to first, so reverse for chronological order
+    pipeline = pipeline[::-1]
+    if logger:
+        logger.info("Dataset pipeline structure (oldest to newest):")
+        for i, name in enumerate(pipeline):
+            logger.info(f"  [{i}] {name}")
+    else:
+        print("Dataset pipeline structure (oldest to newest):")
+        for i, name in enumerate(pipeline):
+            print(f"  [{i}] {name}")

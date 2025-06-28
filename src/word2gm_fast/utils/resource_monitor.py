@@ -38,7 +38,7 @@ class ResourceMonitor:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._step = 0
         self.log_fn = None  # Add log_fn attribute
-        self.print_to_notebook = True  # Optionally control printing
+        self.print_to_notebook = False  # Disable printing by default
 
     def start(self):
         self._thread.start()
@@ -79,17 +79,4 @@ class ResourceMonitor:
                     tf.summary.scalar("resource/gpu_util", gpu_util, step=self._step)
                 if gpu_mem is not None:
                     tf.summary.scalar("resource/gpu_mem_percent", gpu_mem, step=self._step)
-        # Print or log to notebook output
-        msg = f"[Resource] Step {self._step}: "
-        if cpu is not None:
-            msg += f"CPU {cpu:.1f}% "
-        if mem is not None:
-            msg += f"Mem {mem:.1f}% "
-        if gpu_util is not None:
-            msg += f"GPU {gpu_util:.1f}% "
-        if gpu_mem is not None:
-            msg += f"GPU Mem {gpu_mem:.1f}% "
-        if self.log_fn:
-            self.log_fn(msg)
-        elif getattr(self, 'print_to_notebook', True):
-            print(msg)
+        # No print/log output for simplicity

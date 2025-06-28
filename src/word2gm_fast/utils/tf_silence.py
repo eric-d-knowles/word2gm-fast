@@ -87,7 +87,7 @@ def configure_tf_gpu_memory():
             print(f"Warning: Could not set GPU memory growth: {e}")
 
 
-def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_growth=True):
+def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_growth=True, mixed_precision=False):
     """
     Import TensorFlow with complete silencing of all messages.
     
@@ -106,16 +106,24 @@ def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_
         TensorFlow module
     """
     setup_tf_silence(deterministic=deterministic, force_cpu=force_cpu)
-    
+
     with silence_stderr():
         import tensorflow as tf
         tf.get_logger().setLevel('ERROR')
         tf.config.experimental.enable_op_determinism()
-        
+
         # Configure GPU memory growth if requested and not forcing CPU
         if gpu_memory_growth and not force_cpu:
             configure_tf_gpu_memory()
-    
+
+        # Enable mixed precision if requested
+        if mixed_precision:
+            try:
+                from tensorflow.keras import mixed_precision as mp
+                mp.set_global_policy('mixed_float16')
+            except Exception as e:
+                print(f"Warning: Could not enable mixed precision: {e}")
+
     return tf
 
 

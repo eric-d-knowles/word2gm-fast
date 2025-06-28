@@ -58,14 +58,16 @@ def run_notebook_training(
     args.loss_epsilon = getattr(args, 'loss_epsilon', 1e-8)
     args.max_pe = getattr(args, 'max_pe', False)
 
+
     summarize_dataset_pipeline(args.training_dataset)
 
-    print("\n🚀 Starting Word2GM training")
+    from IPython.display import display, Markdown
+    display(Markdown("<pre>\nStarting Word2GM training</pre>"))
     start_time = time.time()
 
     os.makedirs(args.tensorboard_log_path, exist_ok=True)
     summary_writer = tf.summary.create_file_writer(str(args.tensorboard_log_path))
-    print(f"📝 Writing TensorBoard logs to {args.tensorboard_log_path}")
+    display(Markdown(f"<pre>Writing TensorBoard logs to {args.tensorboard_log_path}</pre>"))
 
     model = Word2GMModel(args)
     optimizer = build_optimizer(args)
@@ -87,8 +89,8 @@ def run_notebook_training(
     resource_monitor.start()
 
     try:
+        from IPython.display import display, Markdown
         for epoch in range(args.epochs_to_train):
-            print(f"\n📘 Epoch {epoch + 1}/{args.epochs_to_train}")
             epoch_start = time.time()
 
             epoch_loss = train_one_epoch(
@@ -97,15 +99,15 @@ def run_notebook_training(
             )
 
             epoch_time = time.time() - epoch_start
-            print(f"📉 Loss at epoch {epoch + 1}: {epoch_loss.numpy():.5f}")
-            print(f"🕒 Epoch time: {epoch_time:.2f} sec")
+            # Print a single summary line per epoch
+            display(Markdown(f"<pre>Epoch {epoch + 1}/{args.epochs_to_train} | Loss: {epoch_loss.numpy():.5f} | Time: {epoch_time:.2f} sec</pre>"))
             os.makedirs(args.save_path, exist_ok=True)
             model.save_weights(
                 os.path.join(args.save_path, f"model_weights_epoch{epoch+1}.weights.h5")
             )
 
         total_time = time.time() - start_time
-        print(f"⏱️ Total training time: {total_time:.2f} seconds")
+        display(Markdown(f"<pre>Total training time: {total_time:.2f} seconds</pre>"))
 
         with summary_writer.as_default():
             tf.summary.scalar("total_training_time_seconds", total_time, step=0)

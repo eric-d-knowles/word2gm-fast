@@ -15,7 +15,8 @@ from IPython.display import display, Markdown
 def setup_notebook_environment(
     project_root: str = '/scratch/edk202/word2gm-fast',
     force_cpu: bool = False,
-    gpu_memory_growth: bool = True
+    gpu_memory_growth: bool = True,
+    mixed_precision: bool = False
 ):
     """
     Set up the notebook environment for Word2GM development.
@@ -61,8 +62,9 @@ def setup_notebook_environment(
     # Import TensorFlow with proper configuration
     from word2gm_fast.utils.tf_silence import import_tensorflow_silently
     tf = import_tensorflow_silently(
-        force_cpu=force_cpu, 
-        gpu_memory_growth=gpu_memory_growth
+        force_cpu=force_cpu,
+        gpu_memory_growth=gpu_memory_growth,
+        mixed_precision=mixed_precision
     )
     setup_info['tensorflow'] = tf
     
@@ -146,6 +148,7 @@ def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
         project_root=project_root,
         force_cpu=False,
         gpu_memory_growth=True,
+        mixed_precision=True,
     )
     
     # Import training modules
