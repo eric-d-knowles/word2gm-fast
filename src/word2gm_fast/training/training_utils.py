@@ -2,9 +2,9 @@
 
 import tensorflow as tf
 
-def log_training_metrics(model, grads, step, summary_writer):
+def log_training_metrics(model, grads, step, summary_writer, notebook_display=None):
     """
-    Log diagnostic training metrics to TensorBoard.
+    Log diagnostic training metrics to TensorBoard and optionally update notebook display.
 
     Parameters
     ----------
@@ -16,25 +16,20 @@ def log_training_metrics(model, grads, step, summary_writer):
         The current global step for logging.
     summary_writer : tf.summary.SummaryWriter
         TensorBoard summary writer.
+    notebook_display : dict or None, optional
+        If provided, should be a dict with keys 'display_handle' and 'display_fn' (e.g., IPython.display.display/Markdown),
+        to update notebook cell output with current metrics.
     """
+    grad_norm = tf.linalg.global_norm(grads)
+    mu_norm_avg = tf.reduce_mean(tf.norm(model.mus, axis=-1))
+    sigma_norm_avg = tf.reduce_mean(tf.exp(model.logsigmas))
+    mixture = tf.nn.softmax(model.mixture, axis=-1)
+    entropy = -tf.reduce_sum(mixture * tf.math.log(mixture + 1e-9), axis=-1)
+    entropy_mean = tf.reduce_mean(entropy)
     with summary_writer.as_default():
-        grad_norm = tf.linalg.global_norm(grads)
         tf.summary.scalar("gradient_norm", grad_norm, step=step)
-        tf.summary.scalar(
-            "mu_norm_avg",
-            tf.reduce_mean(tf.norm(model.mus, axis=-1)),
-            step=step
-        )
-        tf.summary.scalar(
-            "sigma_norm_avg",
-            tf.reduce_mean(tf.exp(model.logsigmas)),
-            step=step
-        )
-        mixture = tf.nn.softmax(model.mixture, axis=-1)
-        entropy = -tf.reduce_sum(
-            mixture * tf.math.log(mixture + 1e-9), axis=-1
-        )
-        entropy_mean = tf.reduce_mean(entropy)
+        tf.summary.scalar("mu_norm_avg", mu_norm_avg, step=step)
+        tf.summary.scalar("sigma_norm_avg", sigma_norm_avg, step=step)
         tf.summary.scalar("mixture_entropy_avg", entropy_mean, step=step)
 
 def train_step(

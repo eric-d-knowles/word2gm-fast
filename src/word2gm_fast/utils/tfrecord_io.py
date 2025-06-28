@@ -10,6 +10,7 @@ import os
 import tensorflow as tf
 import time
 from typing import Dict, List, Optional, Union
+from IPython.display import display, Markdown
 
 
 def write_triplets_to_tfrecord(
@@ -37,7 +38,7 @@ def write_triplets_to_tfrecord(
     if compress and not output_path.endswith(".gz"):
         output_path += ".gz"
     options = tf.io.TFRecordOptions(compression_type="GZIP") if compress else None
-    print(f"Writing TFRecord to: {output_path}")
+    display(Markdown(f"<pre>Writing TFRecord to: {output_path}</pre>"))
     start = time.perf_counter()
     count = 0
     with tf.io.TFRecordWriter(output_path, options=options) as writer:
@@ -51,8 +52,7 @@ def write_triplets_to_tfrecord(
             writer.write(example.SerializeToString())
             count += 1
     duration = time.perf_counter() - start
-    print(f"Write complete. Triplets written: {count:,}")
-    print(f"Write time: {duration:.2f} sec")
+    display(Markdown(f"<pre>Write complete. Triplets written: {count:,}</pre>"))
     return count
 
 
@@ -152,7 +152,7 @@ def load_triplets_from_tfrecord(
 
     compression_type = "GZIP" if compressed else None
 
-    print(f"Loading TFRecord from: {tfrecord_path}")
+    display(Markdown(f"<pre>Loading triplet TFRecord from: {tfrecord_path}</pre>"))
     start = time.perf_counter()
 
     raw_ds = tf.data.TFRecordDataset(
@@ -168,8 +168,7 @@ def load_triplets_from_tfrecord(
     )
 
     duration = time.perf_counter() - start
-    print(f"TFRecord loaded and parsed")
-    print(f"Load time (lazy initialization): {duration:.3f} sec")
+    display(Markdown(f"<pre>Triplet TFRecord loaded and parsed</pre>"))
 
     return parsed_ds
 
@@ -194,7 +193,7 @@ def write_vocab_to_tfrecord(
     if compress and not output_path.endswith(".gz"):
         output_path += ".gz"
     options = tf.io.TFRecordOptions(compression_type="GZIP") if compress else None
-    print(f"Writing vocabulary TFRecord to: {output_path}")
+    display(Markdown(f"Writing vocabulary TFRecord to: {output_path}"))
     start = time.perf_counter()
     # Export the vocabulary table
     vocab_keys, vocab_values = vocab_table.export()
@@ -211,8 +210,7 @@ def write_vocab_to_tfrecord(
             writer.write(example.SerializeToString())
             count += 1
     duration = time.perf_counter() - start
-    print(f"Vocabulary write complete. Words written: {count:,}")
-    print(f"Write time: {duration:.2f} sec")
+    display(Markdown(f"<pre>Vocabulary write complete. Words written: {count:,}</pre>"))
 
 
 def parse_vocab_example(example_proto: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
@@ -271,7 +269,7 @@ def load_vocab_from_tfrecord(
 
     compression_type = "GZIP" if compressed else None
 
-    print(f"Loading vocabulary TFRecord from: {tfrecord_path}")
+    display(Markdown(f"<pre>Loading vocabulary TFRecord from: {tfrecord_path}</pre>"))
     start = time.perf_counter()
 
     # Load the raw TFRecord dataset with optimized buffer settings
@@ -304,8 +302,6 @@ def load_vocab_from_tfrecord(
     )
 
     duration = time.perf_counter() - start
-    print(f"Vocabulary loaded (optimized batched). Size: {len(words):,} words")
-    print(f"Load time: {duration:.2f} sec")
 
     return vocab_table
 
@@ -342,7 +338,7 @@ def save_pipeline_artifacts(
     ext = ".tfrecord.gz" if compress else ".tfrecord"
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
-    print(f"Saving pipeline artifacts to: {output_dir}")
+    display(Markdown(f"<pre>Saving pipeline artifacts to: {output_dir}</pre>"))
     # Save vocabulary
     write_vocab_to_tfrecord(vocab_table, vocab_path, compress=compress)
     # Save triplets and get count in one pass
@@ -355,7 +351,7 @@ def save_pipeline_artifacts(
         'compressed': compress,
         'output_dir': output_dir
     }
-    print("All artifacts saved successfully!")
+    display(Markdown("<pre>All artifacts saved successfully!</pre>"))
     return artifacts
 
 
@@ -391,19 +387,24 @@ def load_pipeline_artifacts(
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
     
-    print(f"Loading pipeline artifacts from: {output_dir}")
+    display(Markdown(f"<pre>Loading pipeline artifacts from: {output_dir}</pre>"))
     
     # Load vocabulary
     vocab_table = load_vocab_from_tfrecord(vocab_path, compressed=compressed)
-    
-    # Load triplets
+
+    # Load triplets and cast to tf.int32 for model compatibility
     triplets_ds = load_triplets_from_tfrecord(triplets_path, compressed=compressed)
-    
+    def cast_triplet_to_int32(word_idx, pos_idx, neg_idx):
+        return (tf.cast(word_idx, tf.int32),
+                tf.cast(pos_idx, tf.int32),
+                tf.cast(neg_idx, tf.int32))
+    triplets_ds = triplets_ds.map(cast_triplet_to_int32, num_parallel_calls=tf.data.AUTOTUNE)
+
     artifacts = {
         'vocab_table': vocab_table,
         'triplets_ds': triplets_ds,
         'vocab_size': int(vocab_table.size().numpy()),
     }
-    
-    print("All artifacts loaded successfully!")
+
+    display(Markdown("<pre>All artifacts loaded successfully!</pre>"))
     return artifacts

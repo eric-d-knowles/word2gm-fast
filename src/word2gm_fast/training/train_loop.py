@@ -145,6 +145,3 @@ def train_one_epoch(model, optimizer, dataset, summary_writer=None, epoch=0):
             tf.summary.scalar("epoch_nonzero_batches", tf.cast(nonzero_batches, tf.float32), step=epoch)
 
     return avg_loss
-
-
-# (run_notebook_training has been moved to notebook_training.py)
