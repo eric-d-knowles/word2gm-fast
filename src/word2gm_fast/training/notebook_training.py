@@ -105,6 +105,8 @@ def run_notebook_training(
             model.save_weights(
                 os.path.join(args.save_path, f"model_weights_epoch{epoch+1}.weights.h5")
             )
+            # Log resource usage at the end of each epoch for accurate max tracking
+            resource_monitor.log_resource_usage()
 
         total_time = time.time() - start_time
         display(Markdown(f"<pre>Total training time: {total_time:.2f} seconds</pre>"))
