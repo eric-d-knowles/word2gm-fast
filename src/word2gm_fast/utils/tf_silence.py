@@ -107,6 +107,7 @@ def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_
     """
     setup_tf_silence(deterministic=deterministic, force_cpu=force_cpu)
 
+
     with silence_stderr():
         import tensorflow as tf
         tf.get_logger().setLevel('ERROR')
@@ -123,6 +124,15 @@ def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_
                 mp.set_global_policy('mixed_float16')
             except Exception as e:
                 print(f"Warning: Could not enable mixed precision: {e}")
+
+        # Set global random seed for determinism if requested
+        if deterministic:
+            import random
+            import numpy as np
+            seed = 1  # Default seed; could be parameterized
+            random.seed(seed)
+            np.random.seed(seed)
+            tf.random.set_seed(seed)
 
     return tf
 

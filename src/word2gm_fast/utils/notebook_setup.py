@@ -12,11 +12,27 @@ from pathlib import Path
 from IPython.display import display, Markdown
 
 
+
+def set_global_seed(seed: int = 1):
+    """
+    Set global random seed for TensorFlow and Python for deterministic ops.
+    Call this at the top of your notebook before any random ops.
+    """
+    import random
+    import numpy as np
+    import tensorflow as tf
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+
 def setup_notebook_environment(
     project_root: str = '/scratch/edk202/word2gm-fast',
     force_cpu: bool = False,
     gpu_memory_growth: bool = True,
-    mixed_precision: bool = False
+    mixed_precision: bool = False,
+    deterministic: bool = True,
+    seed: int = 1
 ):
     """
     Set up the notebook environment for Word2GM development.
@@ -64,8 +80,10 @@ def setup_notebook_environment(
     tf = import_tensorflow_silently(
         force_cpu=force_cpu,
         gpu_memory_growth=gpu_memory_growth,
-        mixed_precision=mixed_precision
+        mixed_precision=mixed_precision,
+        deterministic=deterministic
     )
+    set_global_seed(seed)
     setup_info['tensorflow'] = tf
     
     # Import common dependencies
@@ -84,7 +102,8 @@ def setup_notebook_environment(
         f"TensorFlow version: {tf.__version__}",
         f"Device mode: {setup_info['device_mode']}"
     ]
-    display(Markdown(f"<pre>{'\n'.join(setup_lines)}</pre>"))
+    setup_text = '\n'.join(setup_lines)
+    display(Markdown(f"<pre>{setup_text}</pre>"))
 
     return setup_info
 
@@ -101,7 +120,9 @@ def run_silent_subprocess(cmd, **kwargs):
 
 
 def setup_data_preprocessing_notebook(
-    project_root: str = '/scratch/edk202/word2gm-fast'
+    project_root: str = '/scratch/edk202/word2gm-fast',
+    deterministic: bool = True,
+    seed: int = 1
 ):
     """
     Specialized setup for data preprocessing notebooks.
@@ -117,7 +138,9 @@ def setup_data_preprocessing_notebook(
     setup_info = setup_notebook_environment(
         project_root=project_root,
         force_cpu=True,
-        gpu_memory_growth=False
+        gpu_memory_growth=False,
+        deterministic=deterministic,
+        seed=seed
     )
     
     # Import data preprocessing modules
@@ -132,43 +155,48 @@ def setup_data_preprocessing_notebook(
     return setup_info
 
 
-def setup_training_notebook(project_root: str = '/scratch/edk202/word2gm-fast'):
+def setup_training_notebook(
+    project_root: str = '/scratch/edk202/word2gm-fast',
+    deterministic: bool = True,
+    seed: int = 1
+):
     """
     Specialized setup for training notebooks.
-    
     Configures GPU mode and imports training modules.
-    
     Parameters
     ----------
     project_root : str
         Path to the project root directory
+    deterministic : bool
+        Whether to set deterministic ops and global seed
+    seed : int
+        The global random seed
     """
-    # Basic setup with GPU enabled
     setup_info = setup_notebook_environment(
         project_root=project_root,
         force_cpu=False,
         gpu_memory_growth=True,
         mixed_precision=True,
+        deterministic=deterministic,
+        seed=seed
     )
-    
-    # Import training modules
     from word2gm_fast.models.word2gm_model import Word2GMModel
     from word2gm_fast.models.config import Word2GMConfig
     from word2gm_fast.training.training_utils import train_step
     from word2gm_fast.utils.resource_summary import print_resource_summary
-    
     setup_info['Word2GMModel'] = Word2GMModel
     setup_info['Word2GMConfig'] = Word2GMConfig
     setup_info['train_step'] = train_step
     setup_info['print_resource_summary'] = print_resource_summary
     setup_info['run_silent_subprocess'] = run_silent_subprocess
-    # Only print a single concise confirmation
     display(Markdown("<pre>Training environment ready!</pre>"))
     return setup_info
 
 
 def setup_testing_notebook(
-    project_root: str = '/scratch/edk202/word2gm-fast'
+    project_root: str = '/scratch/edk202/word2gm-fast',
+    deterministic: bool = True,
+    seed: int = 1
 ):
     """
     Specialized setup for testing notebooks.
@@ -185,6 +213,8 @@ def setup_testing_notebook(
         project_root=project_root,
         force_cpu=False,
         gpu_memory_growth=True,
+        deterministic=deterministic,
+        seed=seed
     )
     
     # Import all test functions from each test module
