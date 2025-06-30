@@ -69,6 +69,7 @@ def train_step(
         Gradients for model parameters.
     """
     variables = model.trainable_variables
+    #
     with tf.GradientTape() as tape:
         loss = model((word_idxs, pos_idxs, neg_idxs), training=True)
     grads = tape.gradient(loss, variables)
@@ -131,7 +132,4 @@ def summarize_dataset_pipeline(ds, logger=None):
         logger.info("Dataset pipeline structure (oldest to newest):")
         for i, name in enumerate(pipeline):
             logger.info(f"  [{i}] {name}")
-    else:
-        print("Dataset pipeline structure (oldest to newest):")
-        for i, name in enumerate(pipeline):
-            print(f"  [{i}] {name}")
+    # If no logger is provided, do nothing (no print for production)

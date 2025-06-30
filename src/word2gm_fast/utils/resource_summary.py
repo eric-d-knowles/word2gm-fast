@@ -46,9 +46,9 @@ def get_slurm_info():
     job_id = os.environ.get('SLURM_JOB_ID')
     if job_id:
         ssh_cmd = ['ssh', 'greene-login', 'squeue', '-j', job_id, '-h', '-o', '%P']
-        for attempt in range(2):  # Try at most twice
+        for attempt in range(10):
             try:
-                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=10)
+                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=20)
                 
                 if result.returncode == 0:
                     slurm_info['actual_partition'] = result.stdout.strip()

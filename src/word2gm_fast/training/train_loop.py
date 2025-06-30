@@ -83,6 +83,7 @@ def train_one_epoch(model, optimizer, dataset, summary_writer=None, epoch=0):
     nonzero_batches = 0
 
     for step, (word_idxs, pos_idxs, neg_idxs) in enumerate(dataset):
+        #
         with tf.profiler.experimental.Trace("train", step_num=step, _r=1):
             loss, grads = train_step(
                 model, optimizer, word_idxs, pos_idxs, neg_idxs,
