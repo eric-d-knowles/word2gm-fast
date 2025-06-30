@@ -78,6 +78,7 @@ def run_notebook_training(
     resource_monitor.print_to_notebook = False
     resource_monitor.start()
 
+    start_time = time.time()
     try:
         for epoch in range(args.epochs_to_train):
             epoch_start = time.time()
