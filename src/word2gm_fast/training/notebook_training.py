@@ -29,7 +29,9 @@ def run_notebook_training(
     wout=False,
     tensorboard_log_path=None,
     monitor_interval=10,
-    profile=False
+    profile=False,
+    var_scale=0.05,
+    loss_epsilon=1e-8
 ):
     """
     Run the full training loop for the Word2GM model in a notebook environment.
@@ -54,8 +56,8 @@ def run_notebook_training(
     args.tensorboard_log_path = tensorboard_log_path or os.path.join(save_path, "tensorboard")
     args.monitor_interval = monitor_interval
     args.profile = profile
-    args.var_scale = getattr(args, 'var_scale', 0.05)
-    args.loss_epsilon = getattr(args, 'loss_epsilon', 1e-8)
+    args.var_scale = var_scale
+    args.loss_epsilon = loss_epsilon
     args.max_pe = getattr(args, 'max_pe', False)
 
 

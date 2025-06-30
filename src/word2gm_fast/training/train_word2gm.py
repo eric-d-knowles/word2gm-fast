@@ -51,7 +51,8 @@ def load_training_data(artifacts_dir: str, batch_size: int = 128) -> tuple:
     tuple
         (dataset, vocab_size, vocab_table)
     """
-    mixed_precision.set_global_policy('mixed_float16')
+    # Mixed precision policy is now configurable
+    pass  # Policy set in run_notebook_training or by user
     triplets_path = os.path.join(artifacts_dir, "triplets.tfrecord")
     vocab_path = os.path.join(artifacts_dir, "vocab.tfrecord")
     if not os.path.exists(triplets_path):
@@ -219,9 +220,8 @@ def train_word2gm(
             best_loss = avg_loss
             model_path = os.path.join(output_dir, "best_model")
             model.save_weights(model_path)
-            
             if verbose:
-            print(f"  New best model saved: {best_loss:.6f}")
+                print(f"  New best model saved: {best_loss:.6f}")
     
     # Save final model
     final_model_path = os.path.join(output_dir, "final_model")
@@ -247,86 +247,4 @@ def train_word2gm(
                 f"{os.path.join(output_dir, 'tensorboard')}"
             )
     
-    return model
-
-
-from .notebook_training import run_notebook_training
-
-
-def run_notebook_training(
-    artifacts_dir,
-    output_dir,
-    embedding_size=50,
-    num_mixtures=2,
-    spherical=True,
-    learning_rate=0.05,
-    batch_size=128,
-    epochs=10,
-    adagrad=True,
-    var_scale=0.05,
-    normclip=True,
-    tensorboard=True
-):
-    """
-    Run Word2GM training in a notebook environment.
-
-    Parameters
-    ----------
-    artifacts_dir : str
-        Directory containing triplets.tfrecord and vocab.tfrecord.
-    output_dir : str
-        Directory to save trained model.
-    embedding_size : int, optional
-        Embedding dimension (default: 50).
-    num_mixtures : int, optional
-        Number of mixture components (default: 2).
-    spherical : bool, optional
-        Use spherical covariances (default: True).
-    learning_rate : float, optional
-        Learning rate (default: 0.05).
-    batch_size : int, optional
-        Batch size (default: 128).
-    epochs : int, optional
-        Number of epochs (default: 10).
-    adagrad : bool, optional
-        Use Adagrad optimizer (default: True).
-    var_scale : float, optional
-        Variance scale for initialization (default: 0.05).
-    normclip : bool, optional
-        Enable norm clipping (default: True).
-    tensorboard : bool, optional
-        Enable TensorBoard logging (default: True).
-
-    Returns
-    -------
-    model : Word2GMModel
-        The trained Word2GM model instance.
-    """
-    config = Word2GMConfig(
-        vocab_size=0,  # Will be set from data
-        embedding_size=embedding_size,
-        num_mixtures=num_mixtures,
-        spherical=spherical,
-        learning_rate=learning_rate,
-        batch_size=batch_size,
-        epochs_to_train=epochs,
-        adagrad=adagrad,
-        var_scale=var_scale,
-        normclip=normclip
-    )
-    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-    tf = import_tensorflow_silently(force_cpu=True)
-    print("Word2GM Training")
-    print("=" * 50)
-    print(f"Artifacts directory: {artifacts_dir}")
-    print(f"Output directory: {output_dir}")
-    print(f"Configuration: {config}")
-    print()
-    model = train_word2gm(
-        artifacts_dir,
-        output_dir,
-        config,
-        use_tensorboard=tensorboard
-    )
-    print("Training complete!")
     return model

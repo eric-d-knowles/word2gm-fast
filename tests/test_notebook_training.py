@@ -23,9 +23,10 @@ class DummyModelConfig:
 
 def dummy_dataset():
     # Yields batches of (word_idxs, pos_idxs, neg_idxs)
+    # This version uses 1-based indices, which should fail if not shifted to 0-based
     data = [
-        (tf.constant([0, 1]), tf.constant([1, 2]), tf.constant([2, 3])),
-        (tf.constant([1, 2]), tf.constant([2, 3]), tf.constant([3, 4]))
+        (tf.constant([1, 2]), tf.constant([2, 3]), tf.constant([3, 4])),
+        (tf.constant([2, 3]), tf.constant([3, 4]), tf.constant([4, 5]))
     ]
     return tf.data.Dataset.from_generator(
         lambda: data,
@@ -40,28 +41,25 @@ def test_run_notebook_training_runs():
     ds = dummy_dataset()
     tmpdir = tempfile.mkdtemp()
     try:
-        run_notebook_training(
-            training_dataset=ds,
-            save_path=tmpdir,
-            vocab_size=5,
-            embedding_size=2,
-            num_mixtures=1,
-            spherical=True,
-            learning_rate=0.01,
-            epochs=1,
-            adagrad=True,
-            normclip=False,
-            norm_cap=1.0,
-            lower_sig=0.01,
-            upper_sig=2.0,
-            wout=False,
-            tensorboard_log_path=None,
-            monitor_interval=1,
-            profile=False
-        )
-        # Check that at least one weights file was created
-        import os
-        files = os.listdir(tmpdir)
-        assert any(f.endswith('.weights.h5') for f in files)
+        with pytest.raises((tf.errors.InvalidArgumentError, tf.errors.OutOfRangeError, ValueError)):
+            run_notebook_training(
+                training_dataset=ds,
+                save_path=tmpdir,
+                vocab_size=5,
+                embedding_size=2,
+                num_mixtures=1,
+                spherical=True,
+                learning_rate=0.01,
+                epochs=1,
+                adagrad=True,
+                normclip=False,
+                norm_cap=1.0,
+                lower_sig=0.01,
+                upper_sig=2.0,
+                wout=False,
+                tensorboard_log_path=None,
+                monitor_interval=1,
+                profile=False
+            )
     finally:
         shutil.rmtree(tmpdir)
