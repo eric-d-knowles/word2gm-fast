@@ -30,7 +30,7 @@ def setup_notebook_environment(
     project_root: str = '/scratch/edk202/word2gm-fast',
     force_cpu: bool = False,
     gpu_memory_growth: bool = True,
-    mixed_precision: bool = False,
+    # mixed_precision: bool = False,  # Removed for numerical stability
     deterministic: bool = True,
     seed: int = 1
 ):
@@ -80,7 +80,6 @@ def setup_notebook_environment(
     tf = import_tensorflow_silently(
         force_cpu=force_cpu,
         gpu_memory_growth=gpu_memory_growth,
-        mixed_precision=mixed_precision,
         deterministic=deterministic
     )
     set_global_seed(seed)
@@ -176,7 +175,6 @@ def setup_training_notebook(
         project_root=project_root,
         force_cpu=False,
         gpu_memory_growth=True,
-        mixed_precision=True,
         deterministic=deterministic,
         seed=seed
     )

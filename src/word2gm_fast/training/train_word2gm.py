@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 
 import tensorflow as tf
-from tensorflow.keras import mixed_precision
 import numpy as np
 
 # Add src to path (for notebook use, this is usually not needed, but kept for compatibility)

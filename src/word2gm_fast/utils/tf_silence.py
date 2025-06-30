@@ -87,7 +87,7 @@ def configure_tf_gpu_memory():
             print(f"Warning: Could not set GPU memory growth: {e}")
 
 
-def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_growth=True, mixed_precision=False):
+def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_growth=True):
     """
     Import TensorFlow with complete silencing of all messages.
     
@@ -117,13 +117,7 @@ def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_
         if gpu_memory_growth and not force_cpu:
             configure_tf_gpu_memory()
 
-        # Enable mixed precision if requested
-        if mixed_precision:
-            try:
-                from tensorflow.keras import mixed_precision as mp
-                mp.set_global_policy('mixed_float16')
-            except Exception as e:
-                print(f"Warning: Could not enable mixed precision: {e}")
+        # (Mixed precision forcibly disabled)
 
         # Set global random seed for determinism if requested
         if deterministic:

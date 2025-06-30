@@ -10,7 +10,6 @@ import os
 import time
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import mixed_precision
 
 
 from ..models.word2gm_model import Word2GMModel
@@ -28,7 +27,6 @@ from ..utils.resource_monitor import ResourceMonitor
 
 # === TensorFlow config ===
 tf.config.optimizer.set_jit(True)  # Enable XLA
-mixed_precision.set_global_policy('mixed_float16')
 
 
 def build_optimizer(args):
@@ -79,8 +77,8 @@ def train_one_epoch(model, optimizer, dataset, summary_writer=None, epoch=0):
     tf.Tensor
         The average loss for the epoch.
     """
-    # Initialize total_loss with the model's compute dtype or float16 for mixed precision
-    total_loss = tf.constant(0.0, dtype=getattr(model, 'compute_dtype', tf.float16))
+    # Initialize total_loss with the model's compute dtype or float32
+    total_loss = tf.constant(0.0, dtype=getattr(model, 'compute_dtype', tf.float32))
     num_batches = 0
     nonzero_batches = 0
 
