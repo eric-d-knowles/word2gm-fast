@@ -78,15 +78,44 @@ def run_notebook_training(
     resource_monitor.print_to_notebook = False
     resource_monitor.start()
 
+    from IPython.display import display, Markdown
+    # Print main hyperparameters at the start
+    hyperparam_md = f"""
+**Word2GM Training Hyperparameters:**
+
+| Parameter         | Value                |
+|-------------------|----------------------|
+| Vocab size        | `{args.vocab_size}`  |
+| Embedding size    | `{args.embedding_size}` |
+| Mixtures          | `{args.num_mixtures}` |
+| Spherical         | `{args.spherical}`   |
+| Learning rate     | `{args.learning_rate}` |
+| Epochs            | `{args.epochs_to_train}` |
+| Adagrad           | `{args.adagrad}`     |
+| Normclip          | `{args.normclip}`    |
+| Norm cap          | `{args.norm_cap}`    |
+| Lower sigma       | `{args.lower_sig}`   |
+| Upper sigma       | `{args.upper_sig}`   |
+| Wout              | `{args.wout}`        |
+| Var scale         | `{args.var_scale}`   |
+| Loss epsilon      | `{args.loss_epsilon}`|
+"""
+    display(Markdown(hyperparam_md))
     start_time = time.time()
+    epoch_displays = []
     try:
         for epoch in range(args.epochs_to_train):
+            msg = f"**Starting epoch {epoch+1}/{args.epochs_to_train}...**"
+            disp = display(Markdown(msg), display_id=True)
+            epoch_displays.append(disp)
             epoch_start = time.time()
             epoch_loss = train_one_epoch(
                 model, optimizer, args.training_dataset,
                 summary_writer=summary_writer, epoch=epoch
             )
             epoch_time = time.time() - epoch_start
+            msg = f"**Epoch {epoch+1} finished. Loss:** `{epoch_loss:.6f}`  | **Duration:** `{epoch_time:.2f}` seconds."
+            disp.update(Markdown(msg))
             os.makedirs(args.save_path, exist_ok=True)
             model.save_weights(
                 os.path.join(args.save_path, f"model_weights_epoch{epoch+1}.weights.h5")
@@ -94,6 +123,7 @@ def run_notebook_training(
             resource_monitor.log_resource_usage()
 
         total_time = time.time() - start_time
+        display(Markdown(f"**Training complete. Total training time:** `{total_time:.2f}` seconds."))
         with summary_writer.as_default():
             tf.summary.scalar("total_training_time_seconds", total_time, step=0)
         summary_writer.flush()
