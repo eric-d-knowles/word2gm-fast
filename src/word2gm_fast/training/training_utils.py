@@ -132,4 +132,8 @@ def summarize_dataset_pipeline(ds, logger=None):
         logger.info("Dataset pipeline structure (oldest to newest):")
         for i, name in enumerate(pipeline):
             logger.info(f"  [{i}] {name}")
-    # If no logger is provided, do nothing (no print for production)
+    else:
+        # For test/debug: print to stdout
+        print("Dataset pipeline structure (oldest to newest):")
+        for i, name in enumerate(pipeline):
+            print(f"  [{i}] {name}")

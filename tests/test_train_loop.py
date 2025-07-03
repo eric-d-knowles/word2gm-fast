@@ -1,6 +1,7 @@
 # tests/test_train_loop.py
 import pytest
 import tensorflow as tf
+tf.random.set_seed(1)
 from src.word2gm_fast.training.train_loop import train_one_epoch
 from src.word2gm_fast.training.training_utils import train_step
 

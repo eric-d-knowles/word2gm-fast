@@ -53,3 +53,25 @@ def test_vocab_table_contents(vocab_dataset):
     for i, token in enumerate(vocab):
         assert table.lookup(tf.constant(token)).numpy() == i
     assert table.lookup(tf.constant("notinthevocab")).numpy() == 0
+
+
+def test_word_index_roundtrip(vocab_dataset):
+    """
+    Test that for every word in the vocab, word -> index -> word is consistent.
+    """
+    lines, _ = vocab_dataset
+    vocab_set = set()
+    for line in lines:
+        tokens = line.decode("utf-8").strip().split()
+        vocab_set.update(tokens)
+    vocab = ["UNK"] + sorted(tok for tok in vocab_set if tok != "UNK")
+    table = build_vocab_table(vocab)
+    # Simulate vocab.txt as would be written
+    idx_to_word = vocab
+    for word in vocab:
+        idx = table.lookup(tf.constant(word)).numpy()
+        # Check that index is in range
+        assert 0 <= idx < len(idx_to_word)
+        # Check round-trip: word -> idx -> word
+        recovered_word = idx_to_word[idx]
+        assert recovered_word == word, f"Round-trip failed: {word} -> {idx} -> {recovered_word}"

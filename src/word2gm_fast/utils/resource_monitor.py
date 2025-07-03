@@ -100,4 +100,7 @@ class ResourceMonitor:
                     tf.summary.scalar("resource/gpu_util", gpu_util, step=self._step)
                 if gpu_mem is not None:
                     tf.summary.scalar("resource/gpu_mem_percent", gpu_mem, step=self._step)
-        # No print/log output for simplicity
+        # Only call log_fn if set (for testing), do not print to console
+        if self.log_fn is not None:
+            msg = f"CPU: {cpu}%, MEM: {mem}%, GPU: {gpu_util}%, GPU_MEM: {gpu_mem}%"
+            self.log_fn(msg)

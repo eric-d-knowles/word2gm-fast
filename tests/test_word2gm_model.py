@@ -7,6 +7,7 @@ Tests mathematical correctness, GPU/CPU compatibility, and edge cases.
 import pytest
 import numpy as np
 import tensorflow as tf
+tf.random.set_seed(1)
 from pathlib import Path
 import sys
 
@@ -29,8 +30,7 @@ class test_word2gm_model:
             vocab_size=100,
             embedding_size=10,
             num_mixtures=2,
-            spherical=True,
-            batch_size=4
+            spherical=True
         )
     
     @pytest.fixture
@@ -40,8 +40,7 @@ class test_word2gm_model:
             vocab_size=100,
             embedding_size=10,
             num_mixtures=2,
-            spherical=False,
-            batch_size=4
+            spherical=False
         )
     
     @pytest.fixture
@@ -52,8 +51,7 @@ class test_word2gm_model:
             embedding_size=10,
             num_mixtures=2,
             spherical=True,
-            wout=True,
-            batch_size=4
+            wout=True
         )
     
     def test_model_initialization_basic(self, basic_config):
@@ -326,8 +324,7 @@ class TestWord2GMModelGPU:
             vocab_size=100,
             embedding_size=10,
             num_mixtures=2,
-            spherical=True,
-            batch_size=4
+            spherical=True
         )
         
         with tf.device('/GPU:0'):
@@ -354,8 +351,7 @@ def test_model_configurations(spherical, wout, num_mixtures):
         embedding_size=8,
         num_mixtures=num_mixtures,
         spherical=spherical,
-        wout=wout,
-        batch_size=2
+        wout=wout
     )
     model = Word2GMModel(config)
     # Test that model can run forward pass
@@ -378,8 +374,7 @@ if __name__ == "__main__":
         vocab_size=10,
         embedding_size=5,
         num_mixtures=2,
-        spherical=True,
-        batch_size=2
+        spherical=True
     )
     
     model = Word2GMModel(config)

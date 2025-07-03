@@ -1,6 +1,7 @@
 # tests/test_training_utils.py
 import pytest
 import tensorflow as tf
+tf.random.set_seed(1)
 from src.word2gm_fast.training import training_utils
 
 class DummyModel(tf.keras.Model):
