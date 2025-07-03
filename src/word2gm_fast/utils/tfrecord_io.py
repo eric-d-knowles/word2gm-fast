@@ -324,6 +324,17 @@ def load_vocab_from_tfrecord(
     return vocab_table
 
 
+def read_vocab_txt(vocab_txt_path: str) -> list:
+    """
+    Read a vocab.txt file and return a list of tokens in index order.
+    Each line is a token; index = line number.
+    """
+    display(Markdown(f"<pre>Loading vocabulary TXT file from: {vocab_txt_path}</pre>"))
+
+    with open(vocab_txt_path, 'r', encoding='utf-8') as f:
+        return [line.rstrip('\n') for line in f]
+
+
 def save_pipeline_artifacts(
     dataset: tf.data.Dataset,
     vocab_table: tf.lookup.StaticHashTable,
@@ -416,11 +427,15 @@ def load_pipeline_artifacts(
     ext = ".tfrecord.gz" if compressed else ".tfrecord"
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
-    
+    vocab_txt_path = os.path.join(output_dir, "vocab.txt")
+
     display(Markdown(f"<pre>Loading pipeline artifacts from: {output_dir}</pre>"))
-    
+
     # Load vocabulary
     vocab_table = load_vocab_from_tfrecord(vocab_path, compressed=compressed)
+
+    # Load vocab.txt (plain text, index order)
+    vocab_list = read_vocab_txt(vocab_txt_path) if os.path.exists(vocab_txt_path) else None
 
     # Load triplets and cast to tf.int32 for model compatibility
     triplets_ds = load_triplets_from_tfrecord(triplets_path, compressed=compressed)
@@ -432,6 +447,7 @@ def load_pipeline_artifacts(
 
     artifacts = {
         'vocab_table': vocab_table,
+        'vocab_list': vocab_list,
         'triplets_ds': triplets_ds,
         'vocab_size': int(vocab_table.size().numpy()),
     }
