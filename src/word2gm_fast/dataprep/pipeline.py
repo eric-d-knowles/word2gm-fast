@@ -423,22 +423,23 @@ def batch_prepare_training_data(
     if years:
         existing_years = []
         missing_years = []
-        
         for year in years:
             corpus_path = os.path.join(corpus_dir, f"{year}.txt")
             if os.path.exists(corpus_path):
                 existing_years.append(year)
             else:
                 missing_years.append(year)
-        
-        # Show summary of missing years if any
-        if missing_years and show_progress:
-            if len(missing_years) <= 5:
-                print(f"Skipping {len(missing_years)} missing years: {', '.join(sorted(missing_years))}")
-            else:
-                print(f"Skipping {len(missing_years)} missing years (showing first 5): {', '.join(sorted(missing_years)[:5])}, ...")
-            print()
-        
+
+        # Always show summary of missing years if any
+        if show_progress:
+            print(f"Requested {len(years)} years, found {len(existing_years)} corpus files.")
+            if missing_years:
+                if len(missing_years) <= 5:
+                    print(f"Skipping {len(missing_years)} missing years: {', '.join(sorted(missing_years))}")
+                else:
+                    print(f"Skipping {len(missing_years)} missing years (showing first 5): {', '.join(sorted(missing_years)[:5])}, ...")
+                print()
+
         years = existing_years
     
     # Validate that we have years to process
@@ -780,39 +781,42 @@ def get_safe_worker_count(max_workers: int = None) -> int:
 
 def parse_year_range(year_range: str) -> list[str]:
     """
-    Parse a year range string into a list of years.
-    
+    Parse a year range string like "2010,2012-2014,2016" into a list of years as strings.
+
     Parameters
     ----------
     year_range : str
-        Year range in format "start-end" (e.g., "1400-1700") or single year
-        
+        Year range in format "start-end" (e.g., "1400-1700"), single year, or comma-separated list/ranges.
+
     Returns
     -------
     List[str]
         List of years as strings
-        
+
     Examples
     --------
     >>> parse_year_range("1400-1403")
     ['1400', '1401', '1402', '1403']
     >>> parse_year_range("2019")
     ['2019']
+    >>> parse_year_range("2018,2020-2022,2025")
+    ['2018', '2020', '2021', '2022', '2025']
     """
-    if '-' in year_range:
-        start, end = year_range.split('-', 1)
-        try:
+    years = []
+    for part in year_range.split(','):
+        part = part.strip()
+        if '-' in part:
+            start, end = part.split('-')
             start_year = int(start.strip())
             end_year = int(end.strip())
             if start_year > end_year:
-                raise ValueError(f"Start year {start_year} cannot be greater than end year {end_year}")
-            return [str(year) for year in range(start_year, end_year + 1)]
-        except ValueError as e:
-            raise ValueError(f"Invalid year range '{year_range}': {e}")
-    else:
-        # Single year
-        try:
-            int(year_range.strip())  # Validate it's a number
-            return [year_range.strip()]
-        except ValueError:
-            raise ValueError(f"Invalid year '{year_range}': must be a valid 4-digit year")
+                raise ValueError(f"Invalid year range: {part}")
+            years.extend([str(y) for y in range(start_year, end_year + 1)])
+        else:
+            # Validate it's a number
+            try:
+                int(part)
+                years.append(part)
+            except ValueError:
+                raise ValueError(f"Invalid year '{part}': must be a valid 4-digit year")
+    return years
