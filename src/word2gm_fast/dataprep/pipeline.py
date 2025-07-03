@@ -184,25 +184,37 @@ def prepare_training_data(
     step_start = time.perf_counter()
     triplets_ds = build_skipgram_triplets(dataset, vocab_table)
     
+
     # Save artifacts and get triplet count in one pass (optimized: no dataset manifestation)
     ext = ".tfrecord.gz" if compress else ".tfrecord"
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
-    
+    vocab_txt_path = os.path.join(output_dir, "vocab.txt")
+
+    # Import write_vocab_file from tfrecord_io (local import to avoid circular deps)
+    from ..utils.tfrecord_io import write_vocab_file
+
     # Suppress verbose output during save
     old_stdout = sys.stdout
     sys.stdout = StringIO()
     try:
-        # Save vocab
+        # Save vocab TFRecord
         write_vocab_to_tfrecord(vocab_table, vocab_path, compress=compress)
+        # Save vocab.txt (plain text, index order)
+        vocab_keys, vocab_values = vocab_table.export()
+        vocab_keys_np = vocab_keys.numpy()
+        vocab_values_np = vocab_values.numpy()
+        id_word_pairs = sorted(zip(vocab_values_np, vocab_keys_np), key=lambda x: x[0])
+        vocab_list = [word_bytes.decode('utf-8') for _, word_bytes in id_word_pairs]
+        write_vocab_file(vocab_list, vocab_txt_path)
         # Save triplets and get count (direct streaming to TFRecord)
         triplet_count = write_triplets_to_tfrecord_silent(triplets_ds, triplets_path, compress=compress)
     finally:
         sys.stdout = old_stdout
-    
+
     step_duration = time.perf_counter() - step_start
     total_duration = time.perf_counter() - start_total
-    
+
     # Calculate file sizes
     triplets_size_mb = os.path.getsize(triplets_path) / 1024 / 1024 if os.path.exists(triplets_path) else 0
     vocab_size_mb = os.path.getsize(vocab_path) / 1024 / 1024 if os.path.exists(vocab_path) else 0

@@ -6,11 +6,29 @@ This module has been optimized based on comprehensive benchmarking. The vocabula
 uses batched processing that provides 12.6x speedup compared to the original implementation.
 """
 
+
 import os
 import tensorflow as tf
 import time
 from typing import Dict, List, Optional, Union
 from IPython.display import display, Markdown
+
+
+def write_vocab_file(vocab_list, filepath):
+    """
+    Write the vocabulary list to a text file, one word per line, in vocab index order.
+    The first word should be 'UNK' at index 0.
+
+    Parameters
+    ----------
+    vocab_list : list[str]
+        List of vocabulary tokens, with 'UNK' at index 0.
+    filepath : str
+        Path to the output vocab file.
+    """
+    with open(filepath, 'w', encoding='utf-8') as f:
+        for word in vocab_list:
+            f.write(f"{word}\n")
 
 
 def write_triplets_to_tfrecord(
@@ -335,16 +353,28 @@ def save_pipeline_artifacts(
         Paths to the saved files and metadata including triplet count.
     """
     os.makedirs(output_dir, exist_ok=True)
+
     ext = ".tfrecord.gz" if compress else ".tfrecord"
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
+    vocab_txt_path = os.path.join(output_dir, "vocab.txt")
     display(Markdown(f"<pre>Saving pipeline artifacts to: {output_dir}</pre>"))
-    # Save vocabulary
+    # Save vocabulary TFRecord
     write_vocab_to_tfrecord(vocab_table, vocab_path, compress=compress)
+    # Save vocab.txt (plain text)
+    # Export vocab in index order: sort by value (id)
+    vocab_keys, vocab_values = vocab_table.export()
+    vocab_keys_np = vocab_keys.numpy()
+    vocab_values_np = vocab_values.numpy()
+    # Build list of (id, word) pairs and sort by id
+    id_word_pairs = sorted(zip(vocab_values_np, vocab_keys_np), key=lambda x: x[0])
+    vocab_list = [word_bytes.decode('utf-8') for _, word_bytes in id_word_pairs]
+    write_vocab_file(vocab_list, vocab_txt_path)
     # Save triplets and get count in one pass
     triplet_count = write_triplets_to_tfrecord(triplets_ds, triplets_path, compress=compress)
     artifacts = {
         'vocab_path': vocab_path,
+        'vocab_txt_path': vocab_txt_path,
         'triplets_path': triplets_path,
         'vocab_size': int(vocab_table.size().numpy()),
         'triplet_count': triplet_count,

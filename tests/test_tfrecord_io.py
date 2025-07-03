@@ -157,3 +157,25 @@ def test_save_and_load_pipeline_artifacts(tfrecord_test_data):
     loaded_triplets_list = [tuple(x) for x in loaded_triplets]
     assert loaded_triplets_list == tfrecord_test_data['triplet_data']
 
+
+def test_save_pipeline_artifacts_writes_vocab_txt(tfrecord_test_data):
+    """
+    Test that save_pipeline_artifacts writes a vocab.txt file with correct content and order.
+    """
+    import pathlib
+    tmp_dir = tfrecord_test_data['tmp_dir']
+    artifacts_dir = tmp_dir / "artifacts_vocabtxt"
+    os.makedirs(artifacts_dir, exist_ok=True)
+    save_pipeline_artifacts(
+        tfrecord_test_data['text_dataset'],
+        tfrecord_test_data['vocab_table'],
+        tfrecord_test_data['triplets_dataset'],
+        str(artifacts_dir)
+    )
+    vocab_txt_path = pathlib.Path(artifacts_dir) / "vocab.txt"
+    assert vocab_txt_path.exists(), "vocab.txt was not written!"
+    with open(vocab_txt_path, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f.readlines()]
+    # Should match vocab_words in index order
+    assert lines == tfrecord_test_data['vocab_words'], f"vocab.txt contents do not match: {lines} vs {tfrecord_test_data['vocab_words']}"
+

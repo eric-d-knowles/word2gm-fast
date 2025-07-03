@@ -71,19 +71,3 @@ def make_vocab(dataset: tf.data.Dataset) -> tf.lookup.StaticHashTable:
     )
     return build_vocab_table(vocab)
 
-
-def write_vocab_file(vocab_list, filepath):
-    """
-    Write the vocabulary list to a text file, one word per line, in vocab index order.
-    The first word should be 'UNK' at index 0.
-
-    Parameters
-    ----------
-    vocab_list : list[str]
-        List of vocabulary tokens, with 'UNK' at index 0.
-    filepath : str
-        Path to the output vocab file.
-    """
-    with open(filepath, 'w', encoding='utf-8') as f:
-        for word in vocab_list:
-            f.write(f"{word}\n")
