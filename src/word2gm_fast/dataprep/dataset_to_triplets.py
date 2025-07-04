@@ -10,6 +10,8 @@ import tensorflow as tf
 def build_skipgram_triplets(
     dataset: tf.data.Dataset,
     vocab_table: tf.lookup.StaticHashTable,
+    frequencies: tf.Tensor = None,
+    downsample_threshold: float = 1e-5,
 ) -> tf.data.Dataset:
     """
     Convert lines of text into (center, positive, negative) skip-gram triplets.
@@ -33,6 +35,20 @@ def build_skipgram_triplets(
     # Pre-compute constants outside the hot path
     vocab_size = vocab_table.size()
     context_indices = tf.constant([0, 1, 3, 4], dtype=tf.int32)
+
+    # If frequencies are provided, create a lookup table for index->frequency
+    if frequencies is not None:
+        # frequencies: shape [vocab_size], dtype float32 or int64
+        freq_tensor = tf.convert_to_tensor(frequencies, dtype=tf.float32)
+        total_count = tf.reduce_sum(freq_tensor)
+        # Compute word probabilities
+        word_probs = freq_tensor / total_count
+        # Compute downsampling probabilities (per Mikolov et al.)
+        # P_keep = min(1, sqrt(threshold / prob) + threshold / prob)
+        # For rare words, P_keep ~ 1; for frequent, P_keep < 1
+        keep_probs = tf.minimum(1.0, tf.sqrt(downsample_threshold / word_probs) + downsample_threshold / word_probs)
+    else:
+        keep_probs = None
 
     def generate_all_triplets(line: tf.Tensor):
         """
@@ -59,10 +75,20 @@ def build_skipgram_triplets(
         valid_mask = tf.not_equal(context_ids, 0)
         valid_context_ids = tf.boolean_mask(context_ids, valid_mask)
 
+        # Frequency-based downsampling of context words
+        if keep_probs is not None:
+            # Get keep probabilities for each context word
+            context_keep_probs = tf.gather(keep_probs, valid_context_ids)
+            # Sample random uniform values for each context
+            random_vals = tf.random.uniform(tf.shape(context_keep_probs), minval=0.0, maxval=1.0, dtype=tf.float32)
+            # Keep only those where random < keep_prob
+            downsample_mask = random_vals < context_keep_probs
+            valid_context_ids = tf.boolean_mask(valid_context_ids, downsample_mask)
+
         # Skip lines where center is UNK or no valid context exists
         skip_condition = tf.logical_or(
             tf.equal(center_id, 0),  # Center is UNK
-            tf.equal(tf.shape(valid_context_ids)[0], 0)  # No valid context
+            tf.equal(tf.shape(valid_context_ids)[0], 0)  # No valid context (after downsampling)
         )
 
         def create_triplets():

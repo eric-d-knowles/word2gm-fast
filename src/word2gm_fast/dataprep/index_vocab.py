@@ -37,9 +37,9 @@ def build_vocab_table(vocab_list: list[str]) -> tf.lookup.StaticHashTable:
     )
 
 
-def make_vocab(dataset: tf.data.Dataset) -> tf.lookup.StaticHashTable:
+def make_vocab(dataset: tf.data.Dataset):
     """
-    Build a vocab hash table from a tf.data.Dataset of lines using only
+    Build a vocab hash table and frequency dict from a tf.data.Dataset of lines using only
     TensorFlow ops (scalable for large corpora).
 
     The UNK token is always 'UNK' and will be at index 0. All other tokens
@@ -52,8 +52,11 @@ def make_vocab(dataset: tf.data.Dataset) -> tf.lookup.StaticHashTable:
 
     Returns
     -------
-    tf.lookup.StaticHashTable
-        A lookup table mapping tokens to integer IDs.
+    tuple
+        (vocab_table, vocab_list, frequencies)
+        vocab_table: tf.lookup.StaticHashTable
+        vocab_list: list[str]
+        frequencies: dict[str, int]
     """
     tokenized = dataset.map(
         lambda line: tf.strings.split(line),
@@ -62,12 +65,17 @@ def make_vocab(dataset: tf.data.Dataset) -> tf.lookup.StaticHashTable:
     tokens = tokenized.flat_map(
         lambda tokens: tf.data.Dataset.from_tensor_slices(tokens)
     )
-    unique_tokens = tokens.unique()
-    vocab_bytes = list(unique_tokens.as_numpy_iterator())
+    # Collect all tokens as numpy bytes
+    token_bytes = list(tokens.as_numpy_iterator())
+    # Count frequencies using Python dict
+    from collections import Counter
+    token_strs = [tok.decode('utf-8') for tok in token_bytes]
+    freq_counter = Counter(token_strs)
+    # Build vocab list (UNK at 0, rest sorted)
     vocab = ["UNK"] + sorted(
-        tok.decode("utf-8") 
-        for tok in vocab_bytes 
-        if tok.decode("utf-8") != "UNK"
+        tok for tok in freq_counter.keys() if tok != "UNK"
     )
-    return build_vocab_table(vocab)
-
+    # Build frequency dict (UNK always 0)
+    frequencies = {tok: (freq_counter[tok] if tok != "UNK" else 0) for tok in vocab}
+    vocab_table = build_vocab_table(vocab)
+    return vocab_table, vocab, frequencies

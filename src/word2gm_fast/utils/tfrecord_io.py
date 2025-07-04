@@ -194,6 +194,7 @@ def load_triplets_from_tfrecord(
 def write_vocab_to_tfrecord(
     vocab_table: tf.lookup.StaticHashTable,
     output_path: str,
+    frequencies: Optional[dict] = None,
     compress: bool = False
 ) -> None:
     """
@@ -205,6 +206,8 @@ def write_vocab_to_tfrecord(
         The vocabulary lookup table to save.
     output_path : str
         Path for the output TFRecord file.
+    frequencies : dict, optional
+        Mapping from word (str) to frequency (int or float). If None, frequency is set to 0.
     compress : bool, optional
         Whether to compress the file with GZIP. Default is False.
     """
@@ -221,9 +224,13 @@ def write_vocab_to_tfrecord(
     with tf.io.TFRecordWriter(output_path, options=options) as writer:
         for word_bytes, word_id in zip(vocab_keys_np, vocab_values_np):
             word = word_bytes.decode('utf-8')
+            freq = 0
+            if frequencies is not None:
+                freq = frequencies.get(word, 0)
             example = tf.train.Example(features=tf.train.Features(feature={
                 'word': tf.train.Feature(bytes_list=tf.train.BytesList(value=[word.encode('utf-8')])),
                 'id': tf.train.Feature(int64_list=tf.train.Int64List(value=[int(word_id)])),
+                'frequency': tf.train.Feature(float_list=tf.train.FloatList(value=[float(freq)])),
             }))
             writer.write(example.SerializeToString())
             count += 1
@@ -231,7 +238,7 @@ def write_vocab_to_tfrecord(
     display(Markdown(f"<pre>Vocabulary write complete. Words written: {count:,}</pre>"))
 
 
-def parse_vocab_example(example_proto: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
+def parse_vocab_example(example_proto: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
     """
     Parse a single vocabulary example from TFRecord.
 
@@ -242,28 +249,26 @@ def parse_vocab_example(example_proto: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]
 
     Returns
     -------
-    tuple[tf.Tensor, tf.Tensor]
-        (word, id) as string and int64 tensors.
+    tuple[tf.Tensor, tf.Tensor, tf.Tensor]
+        (word, id, frequency) as string, int64, and float32 tensors.
     """
     feature_description = {
         'word': tf.io.FixedLenFeature([], tf.string),
         'id': tf.io.FixedLenFeature([], tf.int64),
+        'frequency': tf.io.FixedLenFeature([], tf.float32, default_value=0.0),
     }
     parsed = tf.io.parse_single_example(example_proto, feature_description)
-    return parsed['word'], parsed['id']
+    return parsed['word'], parsed['id'], parsed['frequency']
 
 
-def load_vocab_from_tfrecord(
+def create_token_to_index_table(
     tfrecord_path: str,
     compressed: Optional[bool] = None,
     default_value: int = 0,
     batch_size: int = 1000
 ) -> tf.lookup.StaticHashTable:
     """
-    Load a vocabulary lookup table from a TFRecord file with optimized batched processing.
-    
-    This function has been optimized based on benchmark results showing 12.6x speedup
-    using batched processing compared to the original single-item iteration approach.
+    Create a token-to-index lookup table from a TFRecord vocab file.
     
     Parameters
     ----------
@@ -274,27 +279,25 @@ def load_vocab_from_tfrecord(
     default_value : int, optional
         Default value for unknown words (typically 0 for UNK). Default is 0.
     batch_size : int, optional
-        Batch size for processing vocabulary entries. Default is 1000 which
-        provides optimal performance based on benchmarks.
-        
+        Batch size for processing vocabulary entries. Default is 1000.
     Returns
     -------
     tf.lookup.StaticHashTable
-        Reconstructed vocabulary lookup table.
+        Reconstructed token-to-index lookup table.
     """
     if compressed is None:
         compressed = tfrecord_path.endswith(".gz")
 
     compression_type = "GZIP" if compressed else None
 
-    display(Markdown(f"<pre>Loading vocabulary TFRecord from: {tfrecord_path}</pre>"))
+    display(Markdown(f"<pre>Loading token-to-index vocabulary TFRecord from: {tfrecord_path}</pre>"))
     start = time.perf_counter()
 
     # Load the raw TFRecord dataset with optimized buffer settings
     raw_ds = tf.data.TFRecordDataset(
         tfrecord_path,
         compression_type=compression_type,
-        buffer_size=128 << 20  # 128MB buffer for improved I/O performance
+        buffer_size=128 << 20
     )
     
     # Parse the vocabulary entries with batching and prefetching
@@ -311,7 +314,7 @@ def load_vocab_from_tfrecord(
         ids.extend(id_batch.numpy())
     
     # Create the lookup table
-    vocab_table = tf.lookup.StaticHashTable(
+    token_to_index_table = tf.lookup.StaticHashTable(
         tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(words),
             values=tf.constant(ids, dtype=tf.int64)
@@ -321,18 +324,73 @@ def load_vocab_from_tfrecord(
 
     duration = time.perf_counter() - start
 
-    return vocab_table
+    return token_to_index_table
 
 
-def read_vocab_txt(vocab_txt_path: str) -> list:
+def create_index_to_token_table(
+    tfrecord_path: str,
+    compressed: Optional[bool] = None,
+    default_value: str = "UNK",
+    batch_size: int = 1000
+) -> tf.lookup.StaticHashTable:
     """
-    Read a vocab.txt file and return a list of tokens in index order.
-    Each line is a token; index = line number.
+    Create an index-to-token lookup table from a TFRecord vocab file.
+    
+    Parameters
+    ----------
+    tfrecord_path : str
+        Path to the vocabulary TFRecord file.
+    compressed : bool, optional
+        Whether the file is GZIP compressed. Auto-detected if None.
+    default_value : str, optional
+        Default value for unknown indices (typically 'UNK'). Default is 'UNK'.
+    batch_size : int, optional
+        Batch size for processing vocabulary entries. Default is 1000.
+    Returns
+    -------
+    tf.lookup.StaticHashTable
+        Reconstructed index-to-token lookup table.
     """
-    display(Markdown(f"<pre>Loading vocabulary TXT file from: {vocab_txt_path}</pre>"))
+    if compressed is None:
+        compressed = tfrecord_path.endswith(".gz")
 
-    with open(vocab_txt_path, 'r', encoding='utf-8') as f:
-        return [line.rstrip('\n') for line in f]
+    compression_type = "GZIP" if compressed else None
+
+    display(Markdown(f"<pre>Loading index-to-token vocab TFRecord from: {tfrecord_path}</pre>"))
+    start = time.perf_counter()
+
+    # Load the raw TFRecord dataset with optimized buffer settings
+    raw_ds = tf.data.TFRecordDataset(
+        tfrecord_path,
+        compression_type=compression_type,
+        buffer_size=128 << 20
+    )
+
+    # Parse the vocabulary entries with batching and prefetching
+    vocab_ds = raw_ds.map(
+        parse_vocab_example,
+        num_parallel_calls=tf.data.AUTOTUNE
+    ).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+    # Extract words and IDs using optimized batched processing
+    words = []
+    ids = []
+    for word_batch, id_batch in vocab_ds:
+        words.extend(word_batch.numpy())
+        ids.extend(id_batch.numpy())
+
+    # Create the lookup table (index -> token)
+    index_to_token_table = tf.lookup.StaticHashTable(
+        tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(ids, dtype=tf.int64),
+            values=tf.constant([w.decode('utf-8') for w in words]),
+        ),
+        default_value=default_value
+    )
+
+    duration = time.perf_counter() - start
+
+    return index_to_token_table
 
 
 def save_pipeline_artifacts(
@@ -368,24 +426,21 @@ def save_pipeline_artifacts(
     ext = ".tfrecord.gz" if compress else ".tfrecord"
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
-    vocab_txt_path = os.path.join(output_dir, "vocab.txt")
     display(Markdown(f"<pre>Saving pipeline artifacts to: {output_dir}</pre>"))
     # Save vocabulary TFRecord
-    write_vocab_to_tfrecord(vocab_table, vocab_path, compress=compress)
-    # Save vocab.txt (plain text)
-    # Export vocab in index order: sort by value (id)
-    vocab_keys, vocab_values = vocab_table.export()
-    vocab_keys_np = vocab_keys.numpy()
-    vocab_values_np = vocab_values.numpy()
-    # Build list of (id, word) pairs and sort by id
-    id_word_pairs = sorted(zip(vocab_values_np, vocab_keys_np), key=lambda x: x[0])
-    vocab_list = [word_bytes.decode('utf-8') for _, word_bytes in id_word_pairs]
-    write_vocab_file(vocab_list, vocab_txt_path)
+    # Try to get frequencies if available (from vocab_table, vocab_list, frequencies tuple)
+    frequencies = None
+    if hasattr(vocab_table, 'frequencies'):
+        frequencies = vocab_table.frequencies
+    elif isinstance(vocab_table, tuple) and len(vocab_table) == 3:
+        # If user passed (vocab_table, vocab_list, frequencies)
+        _, _, frequencies = vocab_table
+        vocab_table = vocab_table[0]
+    write_vocab_to_tfrecord(vocab_table, vocab_path, frequencies=frequencies, compress=compress)
     # Save triplets and get count in one pass
     triplet_count = write_triplets_to_tfrecord(triplets_ds, triplets_path, compress=compress)
     artifacts = {
         'vocab_path': vocab_path,
-        'vocab_txt_path': vocab_txt_path,
         'triplets_path': triplets_path,
         'vocab_size': int(vocab_table.size().numpy()),
         'triplet_count': triplet_count,
@@ -413,7 +468,7 @@ def load_pipeline_artifacts(
     Returns
     -------
     Dict[str, Union[tf.lookup.StaticHashTable, tf.data.Dataset, int]]
-        Loaded vocabulary table and triplets dataset.
+        Loaded vocabulary tables and triplets dataset.
     """
     if compressed is None:
         # Auto-detect based on available files
@@ -427,15 +482,12 @@ def load_pipeline_artifacts(
     ext = ".tfrecord.gz" if compressed else ".tfrecord"
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
-    vocab_txt_path = os.path.join(output_dir, "vocab.txt")
 
     display(Markdown(f"<pre>Loading pipeline artifacts from: {output_dir}</pre>"))
 
-    # Load vocabulary
-    vocab_table = load_vocab_from_tfrecord(vocab_path, compressed=compressed)
-
-    # Load vocab.txt (plain text, index order)
-    vocab_list = read_vocab_txt(vocab_txt_path) if os.path.exists(vocab_txt_path) else None
+    # Load vocabulary tables
+    token_to_index_table = create_token_to_index_table(vocab_path, compressed=compressed)
+    index_to_token_table = create_index_to_token_table(vocab_path, compressed=compressed)
 
     # Load triplets and cast to tf.int32 for model compatibility
     triplets_ds = load_triplets_from_tfrecord(triplets_path, compressed=compressed)
@@ -446,10 +498,10 @@ def load_pipeline_artifacts(
     triplets_ds = triplets_ds.map(cast_triplet_to_int32, num_parallel_calls=tf.data.AUTOTUNE)
 
     artifacts = {
-        'vocab_table': vocab_table,
-        'vocab_list': vocab_list,
+        'token_to_index_table': token_to_index_table,
+        'index_to_token_table': index_to_token_table,
         'triplets_ds': triplets_ds,
-        'vocab_size': int(vocab_table.size().numpy()),
+        'vocab_size': int(token_to_index_table.size().numpy()),
     }
 
     display(Markdown("<pre>All artifacts loaded successfully!</pre>"))

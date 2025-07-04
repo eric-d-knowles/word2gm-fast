@@ -47,7 +47,8 @@ def prepare_training_data(
     compress: bool = True,
     show_progress: bool = True,
     show_summary: bool = True,
-    cache_dataset: bool = True
+    cache_dataset: bool = True,
+    downsample_threshold: float = 1e-5
 ) -> tuple[str, dict]:
     """
     Complete data preparation pipeline for Word2GM skip-gram training.
@@ -169,7 +170,7 @@ def prepare_training_data(
         print("Step 2/3: Building vocabulary...")
         
     step_start = time.perf_counter()
-    vocab_table = make_vocab(dataset)
+    vocab_table, vocab_list, frequencies = make_vocab(dataset)
     vocab_export = vocab_table.export()
     vocab_size = len(vocab_export[0].numpy())
     step_duration = time.perf_counter() - step_start
@@ -180,10 +181,15 @@ def prepare_training_data(
     # Step 3: Generate triplets and save directly to TFRecord (optimized approach)
     if show_progress:
         print("Step 3/3: Generating triplets and saving to TFRecord...")
-        
+
     step_start = time.perf_counter()
-    triplets_ds = build_skipgram_triplets(dataset, vocab_table)
-    
+    # Frequency-based downsampling: pass frequencies and threshold to triplet builder
+    triplets_ds = build_skipgram_triplets(
+        dataset,
+        vocab_table,
+        frequencies=frequencies,
+        downsample_threshold=downsample_threshold
+    )
 
     # Save artifacts and get triplet count in one pass (optimized: no dataset manifestation)
     ext = ".tfrecord.gz" if compress else ".tfrecord"
@@ -198,14 +204,9 @@ def prepare_training_data(
     old_stdout = sys.stdout
     sys.stdout = StringIO()
     try:
-        # Save vocab TFRecord
-        write_vocab_to_tfrecord(vocab_table, vocab_path, compress=compress)
+        # Save vocab TFRecord (with frequencies)
+        write_vocab_to_tfrecord(vocab_table, vocab_path, frequencies=frequencies, compress=compress)
         # Save vocab.txt (plain text, index order)
-        vocab_keys, vocab_values = vocab_table.export()
-        vocab_keys_np = vocab_keys.numpy()
-        vocab_values_np = vocab_values.numpy()
-        id_word_pairs = sorted(zip(vocab_values_np, vocab_keys_np), key=lambda x: x[0])
-        vocab_list = [word_bytes.decode('utf-8') for _, word_bytes in id_word_pairs]
         write_vocab_file(vocab_list, vocab_txt_path)
         # Save triplets and get count (direct streaming to TFRecord)
         triplet_count = write_triplets_to_tfrecord_silent(triplets_ds, triplets_path, compress=compress)
