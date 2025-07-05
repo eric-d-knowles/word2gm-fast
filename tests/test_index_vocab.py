@@ -33,12 +33,12 @@ def vocab_dataset():
 
 def test_make_vocab_table(vocab_dataset):
     _, dataset = vocab_dataset
-    table = make_vocab(dataset)
+    vocab_table, vocab_list, frequencies = make_vocab(dataset)
     expected_tokens = ["UNK", "the", "quick", "brown", "fox", "jumps", "lazy", "dog", "over"]
     for token in expected_tokens:
-        idx = table.lookup(tf.constant(token)).numpy()
+        idx = vocab_table.lookup(tf.constant(token)).numpy()
         assert isinstance(idx, (int, np.integer))
-    assert table.lookup(tf.constant("UNK")).numpy() == 0
+    assert vocab_table.lookup(tf.constant("UNK")).numpy() == 0
 
 
 

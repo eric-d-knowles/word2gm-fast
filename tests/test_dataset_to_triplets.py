@@ -201,5 +201,7 @@ def test_frequencies_none_no_downsampling(triplet_test_data):
     
     # Should produce identical results
     assert len(triplets_none) == len(triplets_default)
-    assert triplets_none == triplets_default
+    # Compare arrays element by element
+    for t1, t2 in zip(triplets_none, triplets_default):
+        assert np.array_equal(t1, t2)
 

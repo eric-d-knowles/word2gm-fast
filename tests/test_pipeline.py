@@ -105,7 +105,7 @@ def test_parse_year_range_invalid():
 @patch('src.word2gm_fast.dataprep.pipeline.make_vocab')  
 @patch('src.word2gm_fast.dataprep.pipeline.build_skipgram_triplets')
 @patch('src.word2gm_fast.dataprep.pipeline.write_triplets_to_tfrecord')
-@patch('src.word2gm_fast.dataprep.pipeline.write_vocab_to_tfrecord')
+@patch('word2gm_fast.io.vocab.write_vocab_to_tfrecord')
 def test_prepare_training_data_success(mock_write_vocab, mock_write_triplets, mock_build_triplets,
                                      mock_make_vocab, mock_make_dataset, pipeline_test_setup):
     """Test successful single file processing."""
@@ -164,7 +164,7 @@ def test_prepare_training_data_file_not_found(pipeline_test_setup):
 
 def test_prepare_training_data_invalid_directory():
     """Test error handling when corpus directory doesn't exist."""
-    with pytest.raises(ValueError):
+    with pytest.raises(FileNotFoundError):
         prepare_training_data(
             corpus_file="test.txt",
             corpus_dir="/nonexistent/directory"

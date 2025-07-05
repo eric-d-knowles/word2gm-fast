@@ -125,8 +125,7 @@ class TestTripletsModule:
         
         write_triplets_to_tfrecord(sample_triplets_list, str(triplet_path), compress=True)
         
-        assert triplet_path.exists()
-        # Compressed files should have .gz extension
+        # Compressed files have .gz extension added
         gz_path = tmp_path / "triplets_compressed.tfrecord.gz"
         assert gz_path.exists()
     

@@ -38,8 +38,30 @@ def build_skipgram_triplets(
 
     # If frequencies are provided, create a lookup table for index->frequency
     if frequencies is not None:
-        # frequencies: shape [vocab_size], dtype float32 or int64
-        freq_tensor = tf.convert_to_tensor(frequencies, dtype=tf.float32)
+        # Handle frequencies as dict, list, or tensor
+        if isinstance(frequencies, dict):
+            # Convert dictionary to tensor using vocab ordering
+            # For dictionary frequencies, we need to ensure proper ordering
+            # Use the vocabulary size to create a properly ordered tensor
+            vocab_size = vocab_table.size().numpy()
+            freq_values = [0.0] * vocab_size
+            
+            # Iterate through the frequency dictionary
+            for token_str, freq in frequencies.items():
+                try:
+                    # Look up the index for this token
+                    index = vocab_table.lookup(tf.constant(token_str)).numpy()
+                    if 0 <= index < vocab_size:
+                        freq_values[index] = float(freq)
+                except:
+                    # If token not found, skip it
+                    continue
+                    
+            freq_tensor = tf.convert_to_tensor(freq_values, dtype=tf.float32)
+        else:
+            # frequencies: shape [vocab_size], dtype float32 or int64
+            freq_tensor = tf.convert_to_tensor(frequencies, dtype=tf.float32)
+        
         total_count = tf.reduce_sum(freq_tensor)
         # Compute word probabilities
         word_probs = freq_tensor / total_count

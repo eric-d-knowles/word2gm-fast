@@ -103,8 +103,9 @@ class TestTablesModule:
             # Token -> Index
             index = token_to_index_table.lookup(tf.constant(word))
             
-            # Index -> Token
-            recovered_token = index_to_token_table.lookup(tf.constant([index], dtype=tf.int64))
+            # Index -> Token (convert scalar index to tensor with shape [1])
+            index_tensor = tf.expand_dims(index, 0)
+            recovered_token = index_to_token_table.lookup(index_tensor)
             recovered_word = recovered_token.numpy()[0].decode('utf-8')
             
             assert recovered_word == word

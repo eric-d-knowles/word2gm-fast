@@ -241,7 +241,9 @@ class TestArtifactsModule:
         for word in data['vocab_words']:
             # Token -> Index -> Token
             index = token_to_index.lookup(tf.constant(word))
-            recovered_token = index_to_token.lookup(tf.constant([index], dtype=tf.int64))
+            # Convert scalar to tensor with shape [1] for lookup
+            index_tensor = tf.expand_dims(index, 0)
+            recovered_token = index_to_token.lookup(index_tensor)
             recovered_word = recovered_token.numpy()[0].decode('utf-8')
             assert recovered_word == word
         

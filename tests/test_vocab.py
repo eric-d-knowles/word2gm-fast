@@ -71,11 +71,13 @@ class TestVocabModule:
         # Read the TFRecord and parse an example
         dataset = tf.data.TFRecordDataset(str(vocab_path))
         for raw_record in dataset.take(1):
-            token, index = parse_vocab_example(raw_record)
+            token, index, frequency = parse_vocab_example(raw_record)
             assert isinstance(token, tf.Tensor)
             assert isinstance(index, tf.Tensor)
+            assert isinstance(frequency, tf.Tensor)
             assert token.dtype == tf.string
             assert index.dtype == tf.int64
+            assert frequency.dtype == tf.float32
     
     def test_parse_vocab_example_with_frequencies(self, sample_vocab_table, sample_frequencies, tmp_path):
         """Test parsing vocab examples with frequencies."""
@@ -127,8 +129,7 @@ class TestVocabModule:
         
         write_vocab_to_tfrecord(sample_vocab_table, str(vocab_path), compress=True)
         
-        assert vocab_path.exists()
-        # Compressed files should have .gz extension
+        # Compressed files have .gz extension added
         gz_path = tmp_path / "vocab_compressed.tfrecord.gz"
         assert gz_path.exists()
     

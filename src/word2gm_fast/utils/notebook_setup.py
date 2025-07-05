@@ -219,7 +219,6 @@ def setup_testing_notebook(
     import tests.test_corpus_to_dataset as test_corpus_to_dataset_mod
     import tests.test_dataset_to_triplets as test_dataset_to_triplets_mod
     import tests.test_index_vocab as test_index_vocab_mod
-    import tests.test_tfrecord_io as test_tfrecord_io_mod
     import tests.test_word2gm_model as test_word2gm_model_mod
     from word2gm_fast.utils.resource_summary import print_resource_summary
 
@@ -228,7 +227,6 @@ def setup_testing_notebook(
         (test_corpus_to_dataset_mod, 'test_corpus_to_dataset'),
         (test_dataset_to_triplets_mod, 'test_dataset_to_triplets'),
         (test_index_vocab_mod, 'test_index_vocab'),
-        (test_tfrecord_io_mod, 'test_tfrecord_io'),
         (test_word2gm_model_mod, 'test_word2gm_model'),
     ]:
         for attr in dir(mod):
