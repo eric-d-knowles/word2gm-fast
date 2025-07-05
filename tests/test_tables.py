@@ -4,6 +4,15 @@ Pytest tests for word2gm_fast.io.tables module.
 import pytest
 import tempfile
 import os
+import sys
+from pathlib import Path
+
+# Add src to path
+PROJECT_ROOT = Path(__file__).parent.parent
+src_path = PROJECT_ROOT / 'src'
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
 import tensorflow as tf
 from word2gm_fast.io.tables import create_token_to_index_table, create_index_to_token_table
 from word2gm_fast.io.vocab import write_vocab_to_tfrecord

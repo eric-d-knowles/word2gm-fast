@@ -6,6 +6,15 @@ import tempfile
 import os
 import json
 import gzip
+import sys
+from pathlib import Path
+
+# Add src to path
+PROJECT_ROOT = Path(__file__).parent.parent
+src_path = PROJECT_ROOT / 'src'
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
 import tensorflow as tf
 from word2gm_fast.io.artifacts import (
     save_pipeline_artifacts, 
