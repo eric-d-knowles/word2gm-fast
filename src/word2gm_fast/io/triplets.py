@@ -39,7 +39,13 @@ def write_triplets_to_tfrecord(
     start = time.perf_counter()
     count = 0
     with tf.io.TFRecordWriter(output_path, options=options) as writer:
-        for triplet in dataset.as_numpy_iterator():
+        # Handle both TensorFlow datasets and plain Python iterables
+        if hasattr(dataset, 'as_numpy_iterator'):
+            iterator = dataset.as_numpy_iterator()
+        else:
+            iterator = dataset
+            
+        for triplet in iterator:
             center, positive, negative = (int(x) for x in triplet)
             example = tf.train.Example(features=tf.train.Features(feature={
                 'center': tf.train.Feature(int64_list=tf.train.Int64List(value=[center])),
@@ -118,7 +124,7 @@ def load_triplets_from_tfrecord(
     )
 
     parsed_ds = raw_ds.map(
-        parse_triplet_example, 
+        lambda x: parse_triplet_example(x), 
         num_parallel_calls=tf.data.AUTOTUNE
     )
 

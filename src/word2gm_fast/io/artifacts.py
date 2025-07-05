@@ -6,6 +6,8 @@ vocabulary tables and triplets datasets as TFRecord files.
 """
 
 import os
+import json
+import gzip
 import tensorflow as tf
 from typing import Dict, Optional, Union
 from IPython.display import display, Markdown
@@ -130,3 +132,64 @@ def load_pipeline_artifacts(
 
     display(Markdown("<pre>All artifacts loaded successfully!</pre>"))
     return artifacts
+
+
+def save_metadata(metadata: Dict, output_path: str, compress: bool = True) -> str:
+    """
+    Save metadata dictionary to a JSON file, optionally compressed.
+    
+    Parameters
+    ----------
+    metadata : Dict
+        Dictionary containing metadata to save.
+    output_path : str
+        Path to save the metadata file.
+    compress : bool, optional
+        Whether to compress the file with gzip. Default is True.
+        
+    Returns
+    -------
+    str
+        The actual path where the file was saved (may include .gz extension).
+    """
+    if compress and not output_path.endswith('.gz'):
+        output_path += '.gz'
+    
+    metadata_json = json.dumps(metadata, indent=2)
+    
+    if compress:
+        with gzip.open(output_path, 'wt', encoding='utf-8') as f:
+            f.write(metadata_json)
+    else:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(metadata_json)
+    
+    display(Markdown(f"<pre>Metadata saved to: {output_path}</pre>"))
+    return output_path
+
+
+def load_metadata(input_path: str) -> Dict:
+    """
+    Load metadata from a JSON file, automatically detecting compression.
+    
+    Parameters
+    ----------
+    input_path : str
+        Path to the metadata file.
+        
+    Returns
+    -------
+    Dict
+        The loaded metadata dictionary.
+    """
+    is_compressed = input_path.endswith('.gz')
+    
+    if is_compressed:
+        with gzip.open(input_path, 'rt', encoding='utf-8') as f:
+            metadata = json.load(f)
+    else:
+        with open(input_path, 'r', encoding='utf-8') as f:
+            metadata = json.load(f)
+    
+    display(Markdown(f"<pre>Metadata loaded from: {input_path}</pre>"))
+    return metadata
