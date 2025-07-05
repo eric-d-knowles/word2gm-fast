@@ -101,7 +101,7 @@ def test_parse_year_range_invalid():
         parse_year_range("not_a_year")  # Invalid year
 
 
-@patch('src.word2gm_fast.dataprep.pipeline.make_dataset')
+@patch('word2gm_fast.dataprep.corpus_to_dataset.make_dataset')
 @patch('word2gm_fast.dataprep.index_vocab.make_vocab')  
 @patch('word2gm_fast.dataprep.dataset_to_triplets.build_skipgram_triplets')
 @patch('word2gm_fast.io.triplets.write_triplets_to_tfrecord')
