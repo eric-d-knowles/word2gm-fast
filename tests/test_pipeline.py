@@ -102,9 +102,9 @@ def test_parse_year_range_invalid():
 
 
 @patch('src.word2gm_fast.dataprep.pipeline.make_dataset')
-@patch('src.word2gm_fast.dataprep.pipeline.make_vocab')  
-@patch('src.word2gm_fast.dataprep.pipeline.build_skipgram_triplets')
-@patch('src.word2gm_fast.dataprep.pipeline.write_triplets_to_tfrecord')
+@patch('word2gm_fast.dataprep.index_vocab.make_vocab')  
+@patch('word2gm_fast.dataprep.dataset_to_triplets.build_skipgram_triplets')
+@patch('word2gm_fast.io.triplets.write_triplets_to_tfrecord')
 @patch('word2gm_fast.io.vocab.write_vocab_to_tfrecord')
 def test_prepare_training_data_success(mock_write_vocab, mock_write_triplets, mock_build_triplets,
                                      mock_make_vocab, mock_make_dataset, pipeline_test_setup):

@@ -163,18 +163,18 @@ def test_downsampling_threshold_effect(triplet_test_data):
     
     frequencies = {word: 100.0 if word == "the" else 10.0 for word in vocab}
     
-    # Aggressive downsampling
+    # Aggressive downsampling (lower threshold = more aggressive)
     triplets_aggressive = list(build_skipgram_triplets(
         dataset, vocab_table, 
         frequencies=frequencies, 
-        downsample_threshold=1e-2
+        downsample_threshold=0.001  # More reasonable threshold
     ).as_numpy_iterator())
     
     # Mild downsampling
     triplets_mild = list(build_skipgram_triplets(
         dataset, vocab_table, 
         frequencies=frequencies, 
-        downsample_threshold=1e-5
+        downsample_threshold=0.01  # Less aggressive
     ).as_numpy_iterator())
     
     # No downsampling
@@ -183,6 +183,10 @@ def test_downsampling_threshold_effect(triplet_test_data):
     ).as_numpy_iterator())
     
     # More aggressive downsampling should result in fewer or equal triplets
+    # But all should produce some triplets
+    assert len(triplets_aggressive) > 0, "Aggressive downsampling produced no triplets"
+    assert len(triplets_mild) > 0, "Mild downsampling produced no triplets"
+    assert len(triplets_none) > 0, "No downsampling produced no triplets"
     assert len(triplets_aggressive) <= len(triplets_mild) <= len(triplets_none)
 
 
