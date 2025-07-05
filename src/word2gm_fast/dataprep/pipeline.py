@@ -305,7 +305,12 @@ def _process_single_year(args):
     tuple
         (year, success, result) where result is either summary dict or error string
     """
-    year, corpus_dir, compress, show_progress = args
+    # Unpack with support for new downsample_threshold argument
+    if len(args) == 4:
+        year, corpus_dir, compress, show_progress = args
+        downsample_threshold = 1e-5
+    else:
+        year, corpus_dir, compress, show_progress, downsample_threshold = args
     
     try:
         corpus_file = f"{year}.txt"
@@ -317,7 +322,8 @@ def _process_single_year(args):
             output_subdir=output_subdir,
             compress=compress,
             show_progress=show_progress,
-            show_summary=False  # Suppress individual summaries in parallel mode
+            show_summary=False,
+            downsample_threshold=downsample_threshold
         )
         
         return (year, True, summary)
@@ -334,7 +340,8 @@ def batch_prepare_training_data(
     show_progress: bool = True,
     show_summary: bool = True,
     max_workers: int | None = None,
-    use_multiprocessing: bool = True
+    use_multiprocessing: bool = True,
+    downsample_threshold: float = 1e-5
 ) -> dict:
     """
     Prepare training data for multiple years in batch with optional parallel processing.
@@ -456,32 +463,27 @@ def batch_prepare_training_data(
                 print(f"\n{'='*65}")
                 print(f"Processing year {year} ({i}/{len(years)})")
                 print(f"{'='*65}")
-            
             try:
                 corpus_file = f"{year}.txt"
                 output_subdir = f"{year}_artifacts"
-                
                 output_dir, summary = prepare_training_data(
                     corpus_file=corpus_file,
                     corpus_dir=corpus_dir,
                     output_subdir=output_subdir,
                     compress=compress,
                     show_progress=show_progress,
-                    show_summary=False  # Suppress individual summaries in batch mode
+                    show_summary=False,  # Suppress individual summaries in batch mode
+                    downsample_threshold=downsample_threshold
                 )
-                
                 results[year] = summary
-                
             except Exception as e:
                 if show_progress:
                     print(f"Error processing {year}: {e}")
                 results[year] = {'error': str(e)}
-
     else:
         # Parallel processing using multiprocessing
         if max_workers is None:
             max_workers = min(get_safe_worker_count(), len(years))
-        
         if show_progress:
             print(f"\n{'='*65}")
             print(f"PARALLEL BATCH PROCESSING")
@@ -490,9 +492,8 @@ def batch_prepare_training_data(
             print(f"Using {max_workers} parallel workers")
             print(f"Estimated speedup: {min(max_workers, len(years)):.1f}x")
             print(f"{'='*65}")
-        
         # Prepare arguments for worker processes
-        worker_args = [(year, corpus_dir, compress, False) for year in years]  # show_progress=False in workers
+        worker_args = [(year, corpus_dir, compress, False, downsample_threshold) for year in years]  # show_progress=False in workers
         
         # Start parallel processing
         start_time = time.perf_counter()
