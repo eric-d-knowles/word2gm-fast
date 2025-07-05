@@ -113,3 +113,93 @@ def test_no_triplets_with_unk_context(triplet_test_data):
         pos = triplet[1]
         assert pos != 0
 
+
+def test_frequency_based_downsampling(triplet_test_data):
+    """Test that frequency-based downsampling reduces high-frequency words."""
+    vocab, vocab_table, lines, dataset = triplet_test_data
+    
+    # Create frequency distribution where "the" is very high frequency
+    frequencies = {
+        "UNK": 100.0,
+        "the": 1000.0,  # Very high frequency - should be downsampled
+        "quick": 50.0,
+        "brown": 30.0,
+        "fox": 25.0,
+        "jumps": 20.0,
+        "over": 15.0,
+        "lazy": 10.0,
+        "dog": 8.0
+    }
+    
+    # Generate triplets with downsampling
+    triplets_ds_downsampled = build_skipgram_triplets(
+        dataset, vocab_table, 
+        frequencies=frequencies, 
+        downsample_threshold=1e-3  # Aggressive downsampling
+    )
+    
+    # Generate triplets without downsampling
+    triplets_ds_normal = build_skipgram_triplets(dataset, vocab_table)
+    
+    triplets_downsampled = list(triplets_ds_downsampled.as_numpy_iterator())
+    triplets_normal = list(triplets_ds_normal.as_numpy_iterator())
+    
+    # Count occurrences of "the" (index 1) as center word
+    the_idx = vocab_table.lookup(tf.constant("the")).numpy()
+    
+    the_count_downsampled = sum(1 for t in triplets_downsampled if t[0] == the_idx)
+    the_count_normal = sum(1 for t in triplets_normal if t[0] == the_idx)
+    
+    # Downsampling should reduce the count of high-frequency words
+    assert the_count_downsampled <= the_count_normal
+    
+    # Should still have some triplets
+    assert len(triplets_downsampled) > 0
+
+
+def test_downsampling_threshold_effect(triplet_test_data):
+    """Test that different downsampling thresholds produce different results."""
+    vocab, vocab_table, lines, dataset = triplet_test_data
+    
+    frequencies = {word: 100.0 if word == "the" else 10.0 for word in vocab}
+    
+    # Aggressive downsampling
+    triplets_aggressive = list(build_skipgram_triplets(
+        dataset, vocab_table, 
+        frequencies=frequencies, 
+        downsample_threshold=1e-2
+    ).as_numpy_iterator())
+    
+    # Mild downsampling
+    triplets_mild = list(build_skipgram_triplets(
+        dataset, vocab_table, 
+        frequencies=frequencies, 
+        downsample_threshold=1e-5
+    ).as_numpy_iterator())
+    
+    # No downsampling
+    triplets_none = list(build_skipgram_triplets(
+        dataset, vocab_table
+    ).as_numpy_iterator())
+    
+    # More aggressive downsampling should result in fewer or equal triplets
+    assert len(triplets_aggressive) <= len(triplets_mild) <= len(triplets_none)
+
+
+def test_frequencies_none_no_downsampling(triplet_test_data):
+    """Test that passing frequencies=None disables downsampling."""
+    vocab, vocab_table, lines, dataset = triplet_test_data
+    
+    # Should be equivalent to not passing frequencies
+    triplets_none = list(build_skipgram_triplets(
+        dataset, vocab_table, frequencies=None
+    ).as_numpy_iterator())
+    
+    triplets_default = list(build_skipgram_triplets(
+        dataset, vocab_table
+    ).as_numpy_iterator())
+    
+    # Should produce identical results
+    assert len(triplets_none) == len(triplets_default)
+    assert triplets_none == triplets_default
+

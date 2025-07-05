@@ -22,10 +22,8 @@ if str(src_path) not in sys.path:
 
 from word2gm_fast.models.word2gm_model import Word2GMModel
 from word2gm_fast.models.config import Word2GMConfig
-from word2gm_fast.utils.tfrecord_io import (
-    read_triplets_from_tfrecord,
-    read_vocab_from_tfrecord
-)
+from word2gm_fast.io.triplets import load_triplets_from_tfrecord
+from word2gm_fast.io.artifacts import load_pipeline_artifacts
 from word2gm_fast.training.training_utils import (
     train_step,
     log_training_metrics,
@@ -58,9 +56,13 @@ def load_training_data(artifacts_dir: str, batch_size: int = 128) -> tuple:
         raise FileNotFoundError(f"Triplets file not found: {triplets_path}")
     if not os.path.exists(vocab_path):
         raise FileNotFoundError(f"Vocabulary file not found: {vocab_path}")
-    vocab_table = read_vocab_from_tfrecord(vocab_path)
-    vocab_size = vocab_table.size()
-    dataset = read_triplets_from_tfrecord(triplets_path)
+    
+    # Load artifacts using the new function
+    artifacts = load_pipeline_artifacts(artifacts_dir)
+    vocab_table = artifacts['token_to_index_table']
+    vocab_size = artifacts['vocab_size']
+    dataset = artifacts['triplets_ds']
+    
     dataset = dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     return dataset, vocab_size, vocab_table
 

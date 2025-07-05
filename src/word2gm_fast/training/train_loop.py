@@ -14,10 +14,8 @@ import tensorflow as tf
 
 from ..models.word2gm_model import Word2GMModel
 from ..models.config import Word2GMConfig
-from ..utils.tfrecord_io import (
-    load_triplets_from_tfrecord,
-    load_vocab_from_tfrecord
-)
+from ..io.triplets import load_triplets_from_tfrecord
+from ..io.artifacts import load_pipeline_artifacts
 from .training_utils import train_step
 
 

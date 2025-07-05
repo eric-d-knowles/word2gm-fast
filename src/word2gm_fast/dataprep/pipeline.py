@@ -120,7 +120,8 @@ def prepare_training_data(
     from .corpus_to_dataset import make_dataset
     from .index_vocab import make_vocab
     from .dataset_to_triplets import build_skipgram_triplets
-    from ..utils.tfrecord_io import write_triplets_to_tfrecord_silent, write_vocab_to_tfrecord
+    from ..io.triplets import write_triplets_to_tfrecord
+    from ..io.vocab import write_vocab_to_tfrecord
     
     # Validate inputs
     corpus_path = os.path.join(corpus_dir, corpus_file)
@@ -195,10 +196,6 @@ def prepare_training_data(
     ext = ".tfrecord.gz" if compress else ".tfrecord"
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
-    vocab_txt_path = os.path.join(output_dir, "vocab.txt")
-
-    # Import write_vocab_file from tfrecord_io (local import to avoid circular deps)
-    from ..utils.tfrecord_io import write_vocab_file
 
     # Suppress verbose output during save
     old_stdout = sys.stdout
@@ -206,10 +203,8 @@ def prepare_training_data(
     try:
         # Save vocab TFRecord (with frequencies)
         write_vocab_to_tfrecord(vocab_table, vocab_path, frequencies=frequencies, compress=compress)
-        # Save vocab.txt (plain text, index order)
-        write_vocab_file(vocab_list, vocab_txt_path)
         # Save triplets and get count (direct streaming to TFRecord)
-        triplet_count = write_triplets_to_tfrecord_silent(triplets_ds, triplets_path, compress=compress)
+        triplet_count = write_triplets_to_tfrecord(triplets_ds, triplets_path, compress=compress)
     finally:
         sys.stdout = old_stdout
 
