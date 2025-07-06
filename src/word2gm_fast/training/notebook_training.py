@@ -64,7 +64,26 @@ def run_notebook_training(
     os.makedirs(args.tensorboard_log_path, exist_ok=True)
     summary_writer = tf.summary.create_file_writer(str(args.tensorboard_log_path))
 
-    model = Word2GMModel(args)
+    # Create a proper Word2GMConfig object from args
+    from ..models.config import Word2GMConfig
+    config = Word2GMConfig(
+        vocab_size=args.vocab_size,
+        embedding_size=args.embedding_size,
+        num_mixtures=args.num_mixtures,
+        spherical=args.spherical,
+        norm_cap=args.norm_cap,
+        lower_sig=args.lower_sig,
+        upper_sig=args.upper_sig,
+        var_scale=args.var_scale,
+        loss_epsilon=args.loss_epsilon,
+        wout=args.wout,
+        max_pe=args.max_pe
+    )
+    
+    # Add training-specific parameters to config for compatibility
+    config.normclip = args.normclip
+    
+    model = Word2GMModel(config)
     optimizer = build_optimizer(args)
 
     # Initialize optimizer slot variables

@@ -73,8 +73,25 @@ def train_step(
     with tf.GradientTape() as tape:
         loss = model((word_idxs, pos_idxs, neg_idxs), training=True)
     grads = tape.gradient(loss, variables)
-    # Filter out None gradients
-    grads_and_vars = [(g, v) for g, v in zip(grads, variables) if g is not None]
+    
+    # Convert IndexedSlices to dense tensors to avoid duplicate index issues with AdaGrad
+    def convert_indexed_slices_to_dense(grad, var):
+        if isinstance(grad, tf.IndexedSlices):
+            # Convert IndexedSlices to dense tensor
+            return tf.scatter_nd(
+                tf.expand_dims(grad.indices, 1),
+                grad.values,
+                var.shape
+            )
+        return grad
+    
+    # Filter out None gradients and convert IndexedSlices to dense
+    grads_and_vars = []
+    for g, v in zip(grads, variables):
+        if g is not None:
+            dense_grad = convert_indexed_slices_to_dense(g, v)
+            grads_and_vars.append((dense_grad, v))
+    
     if grads_and_vars:
         optimizer.apply_gradients(grads_and_vars)
     if normclip:
