@@ -174,3 +174,122 @@ class TestTablesModule:
         
         token = index_to_token_table.lookup(tf.constant([1], dtype=tf.int64))
         assert token.numpy()[0].decode('utf-8') == "compressed"
+    
+    @pytest.fixture
+    def sample_triplets_tfrecord(self, tmp_path):
+        """Create a sample triplets TFRecord file for testing filtering."""
+        from word2gm_fast.io.triplets import write_triplets_to_tfrecord
+        
+        # Create test triplets (note: index 5 "unused_token" doesn't appear)
+        test_triplets = [
+            (1, 2, 3),  # "the", "quick", "brown" 
+            (2, 3, 4),  # "quick", "brown", "fox"
+            (3, 4, 1),  # "brown", "fox", "the"
+            (4, 1, 2),  # "fox", "the", "quick"
+            (0, 1, 2),  # "UNK", "the", "quick"
+        ]
+        
+        triplets_path = tmp_path / "test_triplets.tfrecord"
+        triplets_ds = tf.data.Dataset.from_tensor_slices(test_triplets)
+        write_triplets_to_tfrecord(triplets_ds, str(triplets_path))
+        
+        return str(triplets_path), test_triplets
+    
+    def test_get_unique_indices_from_triplets(self, sample_triplets_tfrecord):
+        """Test extracting unique indices from triplets."""
+        from word2gm_fast.io.tables import get_unique_indices_from_triplets
+        
+        triplets_path, test_triplets = sample_triplets_tfrecord
+        
+        # Extract unique indices
+        unique_indices = get_unique_indices_from_triplets(triplets_path)
+        
+        # Verify results - should contain indices 0, 1, 2, 3, 4
+        expected_indices = {0, 1, 2, 3, 4}
+        assert unique_indices == expected_indices
+    
+    def test_filtered_token_to_index_table(self, sample_vocab_tfrecord, sample_triplets_tfrecord):
+        """Test creating filtered token-to-index lookup table."""
+        vocab_path, vocab_words, vocab_indices, frequencies = sample_vocab_tfrecord
+        triplets_path, test_triplets = sample_triplets_tfrecord
+        
+        # Create unfiltered table
+        unfiltered_table = create_token_to_index_table(vocab_path)
+        
+        # Create filtered table
+        filtered_table = create_token_to_index_table(
+            vocab_path, 
+            triplets_tfrecord_path=triplets_path
+        )
+        
+        # Test tokens that appear in triplets - should work in both tables
+        for token in ["UNK", "the", "quick", "brown", "fox"]:
+            unfiltered_result = unfiltered_table.lookup(tf.constant([token]))
+            filtered_result = filtered_table.lookup(tf.constant([token]))
+            # Should return the same index
+            assert unfiltered_result.numpy()[0] == filtered_result.numpy()[0]
+        
+        # Test tokens that don't appear in triplets - should return default in filtered table
+        for token in ["jumps", "over"]:  # These don't appear in our test triplets
+            unfiltered_result = unfiltered_table.lookup(tf.constant([token]))
+            filtered_result = filtered_table.lookup(tf.constant([token]))
+            # Unfiltered should return actual index, filtered should return default (0)
+            assert unfiltered_result.numpy()[0] != 0  # Has actual index
+            assert filtered_result.numpy()[0] == 0    # Returns default
+    
+    def test_filtered_index_to_token_table(self, sample_vocab_tfrecord, sample_triplets_tfrecord):
+        """Test creating filtered index-to-token lookup table."""
+        vocab_path, vocab_words, vocab_indices, frequencies = sample_vocab_tfrecord
+        triplets_path, test_triplets = sample_triplets_tfrecord
+        
+        # Create unfiltered table
+        unfiltered_table = create_index_to_token_table(vocab_path)
+        
+        # Create filtered table
+        filtered_table = create_index_to_token_table(
+            vocab_path,
+            triplets_tfrecord_path=triplets_path
+        )
+        
+        # Test indices that appear in triplets
+        for index in [0, 1, 2, 3, 4]:
+            unfiltered_result = unfiltered_table.lookup(tf.constant([index], dtype=tf.int64))
+            filtered_result = filtered_table.lookup(tf.constant([index], dtype=tf.int64))
+            # Should return the same token
+            assert unfiltered_result.numpy()[0] == filtered_result.numpy()[0]
+        
+        # Test indices that don't appear in triplets
+        for index in [5, 6]:  # "jumps", "over" - don't appear in triplets
+            unfiltered_result = unfiltered_table.lookup(tf.constant([index], dtype=tf.int64))
+            filtered_result = filtered_table.lookup(tf.constant([index], dtype=tf.int64))
+            # Unfiltered should return actual token, filtered should return default
+            assert unfiltered_result.numpy()[0].decode('utf-8') != "UNK"  # Has actual token
+            assert filtered_result.numpy()[0].decode('utf-8') == "UNK"    # Returns default
+    
+    def test_create_filtered_lookup_tables(self, sample_vocab_tfrecord, sample_triplets_tfrecord):
+        """Test the convenience function for creating both filtered tables."""
+        from word2gm_fast.io.tables import create_filtered_lookup_tables
+        
+        vocab_path, vocab_words, vocab_indices, frequencies = sample_vocab_tfrecord
+        triplets_path, test_triplets = sample_triplets_tfrecord
+        
+        # Create both tables using convenience function
+        token_to_index_table, index_to_token_table = create_filtered_lookup_tables(
+            vocab_path, triplets_path
+        )
+        
+        # Test roundtrip for tokens that appear in triplets
+        for token in ["UNK", "the", "quick", "brown", "fox"]:
+            # Token -> Index
+            index = token_to_index_table.lookup(tf.constant([token]))
+            
+            # Index -> Token
+            recovered_token = index_to_token_table.lookup(index)
+            recovered_word = recovered_token.numpy()[0].decode('utf-8')
+            
+            assert recovered_word == token
+        
+        # Test that filtered tokens return defaults
+        for token in ["jumps", "over"]:
+            index = token_to_index_table.lookup(tf.constant([token]))
+            assert index.numpy()[0] == 0  # Should return default (UNK index)
