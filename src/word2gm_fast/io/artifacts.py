@@ -79,7 +79,8 @@ def save_pipeline_artifacts(
 
 def load_pipeline_artifacts(
     output_dir: str, 
-    compressed: Optional[bool] = None
+    compressed: Optional[bool] = None,
+    filter_to_triplets: bool = False
 ) -> Dict[str, Union[tf.lookup.StaticHashTable, tf.data.Dataset, int]]:
     """
     Load all pipeline artifacts from TFRecord files.
@@ -90,6 +91,11 @@ def load_pipeline_artifacts(
         Directory containing the TFRecord files.
     compressed : bool, optional
         Whether files are compressed. Auto-detected if None.
+    filter_to_triplets : bool, optional
+        If True, filter vocabulary tables to only include tokens that appear
+        in the triplets dataset. This prevents querying of heavily downsampled
+        tokens and ensures all accessible tokens have reliable embeddings.
+        Default is False for backward compatibility.
         
     Returns
     -------
@@ -109,11 +115,27 @@ def load_pipeline_artifacts(
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
 
-    display(Markdown(f"<pre>Loading pipeline artifacts from: {output_dir}</pre>"))
-
-    # Load vocabulary tables
-    token_to_index_table = create_token_to_index_table(vocab_path, compressed=compressed)
-    index_to_token_table = create_index_to_token_table(vocab_path, compressed=compressed)
+    if filter_to_triplets:
+        display(Markdown(f"<pre>Loading filtered pipeline artifacts from: {output_dir}</pre>"))
+        display(Markdown(f"<pre>Filtering vocabulary to tokens that appear in triplets...</pre>"))
+        
+        # Load vocabulary tables with filtering
+        token_to_index_table = create_token_to_index_table(
+            vocab_path, 
+            triplets_tfrecord_path=triplets_path,
+            compressed=compressed
+        )
+        index_to_token_table = create_index_to_token_table(
+            vocab_path,
+            triplets_tfrecord_path=triplets_path, 
+            compressed=compressed
+        )
+    else:
+        display(Markdown(f"<pre>Loading pipeline artifacts from: {output_dir}</pre>"))
+        
+        # Load vocabulary tables without filtering (original behavior)
+        token_to_index_table = create_token_to_index_table(vocab_path, compressed=compressed)
+        index_to_token_table = create_index_to_token_table(vocab_path, compressed=compressed)
 
     # Load triplets and cast to tf.int32 for model compatibility
     triplets_ds = load_triplets_from_tfrecord(triplets_path, compressed=compressed)
@@ -128,9 +150,13 @@ def load_pipeline_artifacts(
         'index_to_token_table': index_to_token_table,
         'triplets_ds': triplets_ds,
         'vocab_size': int(token_to_index_table.size().numpy()),
+        'filtered_to_triplets': filter_to_triplets
     }
 
-    display(Markdown("<pre>All artifacts loaded successfully!</pre>"))
+    if filter_to_triplets:
+        display(Markdown("<pre>Filtered artifacts loaded successfully!</pre>"))
+    else:
+        display(Markdown("<pre>All artifacts loaded successfully!</pre>"))
     return artifacts
 
 

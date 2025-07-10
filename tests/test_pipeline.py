@@ -106,8 +106,11 @@ def test_parse_year_range_invalid():
 @patch('word2gm_fast.dataprep.dataset_to_triplets.build_skipgram_triplets')
 @patch('word2gm_fast.io.triplets.write_triplets_to_tfrecord')
 @patch('word2gm_fast.io.vocab.write_vocab_to_tfrecord')
-def test_prepare_training_data_success(mock_write_vocab, mock_write_triplets, mock_build_triplets,
-                                     mock_make_vocab, mock_make_dataset, pipeline_test_setup):
+@patch('word2gm_fast.io.triplets.load_triplets_from_tfrecord')
+@patch('word2gm_fast.utils.triplet_utils.count_unique_triplet_tokens')
+def test_prepare_training_data_success(mock_count_unique_triplets, mock_read_triplets, mock_write_vocab, 
+                                     mock_write_triplets, mock_build_triplets, mock_make_vocab, 
+                                     mock_make_dataset, pipeline_test_setup):
     from word2gm_fast.dataprep.pipeline import prepare_training_data
     """Test successful single file processing."""
     # Mock the pipeline components
@@ -126,6 +129,11 @@ def test_prepare_training_data_success(mock_write_vocab, mock_write_triplets, mo
     mock_build_triplets.return_value = mock_triplets_ds
     
     mock_write_triplets.return_value = 1000  # Mock triplet count
+    
+    # Mock load_triplets_from_tfrecord and count_unique_triplet_tokens
+    mock_loaded_triplets_ds = MagicMock()
+    mock_read_triplets.return_value = mock_loaded_triplets_ds
+    mock_count_unique_triplets.return_value = (2, {1, 2})  # 2 unique tokens out of 3
     
     # Ensure the test corpus directory and file exist
     corpus_dir = pipeline_test_setup['corpus_dir']
@@ -156,6 +164,9 @@ def test_prepare_training_data_success(mock_write_vocab, mock_write_triplets, mo
     assert summary['corpus_file'] == "2019.txt"
     assert summary['vocab_size'] == 3
     assert summary['triplet_count'] == 1000
+    assert summary['unique_token_count'] == 2
+    assert summary['unique_token_percentage'] == pytest.approx(2/3*100)
+    assert summary['unused_token_count'] == 1
 
 
 def test_prepare_training_data_file_not_found(pipeline_test_setup):

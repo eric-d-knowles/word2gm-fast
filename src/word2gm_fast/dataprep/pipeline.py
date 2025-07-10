@@ -108,13 +108,15 @@ def prepare_training_data(
     >>> print(f"Artifacts saved to: {output_dir}")
     >>> print(f"Vocabulary size: {summary['vocab_size']:,}")
     >>> print(f"Training triplets: {summary['triplet_count']:,}")
+    >>> print(f"Unique tokens: {summary['unique_token_count']:,} ({summary['unique_token_percentage']:.1f}% of vocabulary)")
+    >>> print(f"Unused tokens: {summary['unused_token_count']:,}")
     """
     
     # Import TensorFlow and pipeline components inside function to avoid multiprocessing issues
     # Force CPU-only mode in multiprocessing workers to avoid CUDA initialization errors
     force_cpu = mp.current_process().name != 'MainProcess'
     
-    from ..utils import import_tensorflow_silently
+    from ..utils import import_tensorflow_silently, count_unique_triplet_tokens
     tf = import_tensorflow_silently(deterministic=False, force_cpu=force_cpu, gpu_memory_growth=not force_cpu)
     
     from .corpus_to_dataset import make_dataset
@@ -208,6 +210,21 @@ def prepare_training_data(
     finally:
         sys.stdout = old_stdout
 
+    # Count unique tokens in triplets (for vocabulary coverage analysis)
+    if show_progress:
+        print(f"Counting unique tokens in triplets...")
+    
+    # Re-load the triplets dataset from the saved file to avoid recomputation
+    from ..io.triplets import load_triplets_from_tfrecord
+    loaded_triplets_ds = load_triplets_from_tfrecord(triplets_path, compressed=compress)
+    
+    # Count unique tokens (with progress updates disabled to avoid cluttering summary)
+    unique_token_count, unique_token_indices = count_unique_triplet_tokens(
+        loaded_triplets_ds, 
+        show_progress=False,
+        batch_size=1000
+    )
+
     step_duration = time.perf_counter() - step_start
     total_duration = time.perf_counter() - start_total
 
@@ -224,6 +241,9 @@ def prepare_training_data(
         print(f"Corpus processed:   {file_size_mb:.3f} MB")
         print(f"Vocabulary size:    {vocab_size:,} words")
         print(f"Training triplets:  {triplet_count:,}")
+        print(f"Unique tokens:      {unique_token_count:,} ({unique_token_count/vocab_size*100:.1f}% of vocabulary)")
+        if unique_token_count < vocab_size:
+            print(f"Unused tokens:      {vocab_size - unique_token_count:,} ({(vocab_size - unique_token_count)/vocab_size*100:.1f}% of vocabulary)")
         print(f"Artifact size:      {total_artifact_size_mb:.3f} MB")
         print(f"Compression ratio:  {file_size_mb / total_artifact_size_mb:.3f}x")
         print(f"Total time:         {total_duration:.3f}s")
@@ -242,6 +262,9 @@ def prepare_training_data(
         'corpus_size_mb': file_size_mb,
         'vocab_size': vocab_size,
         'triplet_count': triplet_count,
+        'unique_token_count': unique_token_count,
+        'unique_token_percentage': unique_token_count/vocab_size*100,
+        'unused_token_count': vocab_size - unique_token_count,
         'artifacts_size_mb': total_artifact_size_mb,
         'compression_ratio': file_size_mb / total_artifact_size_mb if total_artifact_size_mb > 0 else 0,
         'total_duration_s': total_duration,
@@ -548,8 +571,18 @@ def batch_prepare_training_data(
             avg_duration = sum(results[year]['total_duration_s'] for year in successful) / len(successful)
             total_duration = sum(results[year]['total_duration_s'] for year in successful)
             
-            print(f"   Total triplets: {total_triplets:,}")
-            print(f"   Average vocab size: {total_vocab // len(successful):,}")
+            # Calculate unique token stats if available
+            if 'unique_token_count' in results[next(iter(successful))]:
+                total_unique_tokens = sum(results[year]['unique_token_count'] for year in successful)
+                avg_unique_percentage = sum(results[year]['unique_token_percentage'] for year in successful) / len(successful)
+                print(f"   Total triplets: {total_triplets:,}")
+                print(f"   Average vocab size: {total_vocab // len(successful):,}")
+                print(f"   Unique tokens: {total_unique_tokens:,}")
+                print(f"   Avg token coverage: {avg_unique_percentage:.1f}%")
+            else:
+                print(f"   Total triplets: {total_triplets:,}")
+                print(f"   Average vocab size: {total_vocab // len(successful):,}")
+            
             print(f"   Average time per year: {avg_duration:.1f}s")
             
             # Overall triplets per second
