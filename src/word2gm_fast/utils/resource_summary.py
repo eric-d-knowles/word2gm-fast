@@ -42,48 +42,37 @@ def get_slurm_info():
     slurm_info['job_id'] = os.environ.get('SLURM_JOB_ID', 'N/A')
     slurm_info['node_list'] = os.environ.get('SLURM_JOB_NODELIST', 'N/A')
     
-    # Get actual partition by SSH'ing to login node
+    # Get actual partition - try multiple methods
     job_id = os.environ.get('SLURM_JOB_ID')
     if job_id:
-        ssh_cmd = ['ssh', 'greene-login', 'squeue', '-j', job_id, '-h', '-o', '%P']
-        for attempt in range(10):
+        # Method 1: Try local squeue command first (might work if we're on a compute node)
+        try:
+            result = subprocess.run(['squeue', '-j', job_id, '-h', '-o', '%P'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                slurm_info['actual_partition'] = result.stdout.strip()
+            else:
+                raise subprocess.CalledProcessError(result.returncode, 'squeue')
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            # Method 2: Try SSH with more robust host key handling
             try:
-                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=20)
+                ssh_cmd = ['ssh', '-o', 'StrictHostKeyChecking=no', 
+                          '-o', 'UserKnownHostsFile=/dev/null',
+                          '-o', 'LogLevel=ERROR',
+                          'greene-login', 'squeue', '-j', job_id, '-h', '-o', '%P']
+                
+                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=15)
                 
                 if result.returncode == 0:
                     slurm_info['actual_partition'] = result.stdout.strip()
-                    break
-                
-                # Check for host key warning
-                if "REMOTE HOST IDENTIFICATION HAS CHANGED" in result.stderr:
-                    match = re.search(r"Offending (?:ECDSA|RSA|ED25519) key in (.*):(\d+)", result.stderr)
-                    if match:
-                        known_hosts_path = match.group(1)
-                        line_number = int(match.group(2))
-                        
-                        # Remove the offending line
-                        with open(known_hosts_path, "r") as f:
-                            lines = f.readlines()
-                        with open(known_hosts_path, "w") as f:
-                            for i, line in enumerate(lines, 1):
-                                if i != line_number:
-                                    f.write(line)
-                        continue  # Retry SSH
-                    
-                    else:
-                        slurm_info['actual_partition'] = "SSH host key error: could not parse offending line"
-                        break
-                
                 else:
-                    slurm_info['actual_partition'] = f"SSH failed: {result.stderr.strip()}"
-                    break
-            
+                    # Method 3: Try to get info from local SLURM environment variables
+                    slurm_info['actual_partition'] = f"SSH failed, using fallback: {slurm_info['requested_partitions']}"
+                    
             except subprocess.TimeoutExpired:
-                slurm_info['actual_partition'] = "SSH timeout"
-                break
+                slurm_info['actual_partition'] = f"SSH timeout, using fallback: {slurm_info['requested_partitions']}"
             except Exception as e:
-                slurm_info['actual_partition'] = f"SSH error: {e}"
-                break
+                slurm_info['actual_partition'] = f"SSH error, using fallback: {slurm_info['requested_partitions']}"
     else:
         slurm_info['actual_partition'] = 'N/A (not in SLURM job)'
     
@@ -173,7 +162,7 @@ def print_resource_summary():
     """Print a comprehensive resource summary using monospace font in notebook."""
     output_lines = []
     output_lines.append("SYSTEM RESOURCE SUMMARY")
-    output_lines.append("=" * 60)
+    output_lines.append("=" * 45)
     
     # Basic system info
     hostname = get_hostname()
@@ -185,23 +174,25 @@ def print_resource_summary():
     output_lines.append("Job Allocation:")
     output_lines.append(f"   CPUs: {slurm_info['cpus']}")
     output_lines.append(f"   Memory: {slurm_info['memory_gb']:.1f} GB")
-    output_lines.append(f"   Requested partitions: {slurm_info['requested_partitions']}")
-    output_lines.append(f"   Running on: {slurm_info['actual_partition']}")
+    output_lines.append(f"   Partition: {slurm_info['actual_partition']}")
     output_lines.append(f"   Job ID: {slurm_info['job_id']}")
     output_lines.append(f"   Node list: {slurm_info['node_list']}")
     
-    # GPU information
+    # Physical GPU hardware detection
     gpu_info = get_gpu_info()
     output_lines.append("")
-    output_lines.append("GPU Information:")
+    output_lines.append("Physical GPU Hardware:")
     
     if not gpu_info['available']:
         if 'error' in gpu_info:
-            output_lines.append(f"   Error: {gpu_info['error']}")
+            if 'NVML Shared Library Not Found' in gpu_info['error']:
+                output_lines.append(f"   No physical GPUs allocated to this job")
+            else:
+                output_lines.append(f"   Error: {gpu_info['error']}")
         else:
-            output_lines.append(f"   No CUDA GPUs detected")
+            output_lines.append(f"   No physical GPUs detected")
     else:
-        output_lines.append(f"   CUDA GPUs detected: {gpu_info['count']}")
+        output_lines.append(f"   Physical GPUs available: {gpu_info['count']}")
         for device in gpu_info['devices']:
             output_lines.append(f"   GPU {device['index']}: {device['name']}")
             output_lines.append(f"      Memory: {device['memory_used_gb']:.1f}/"
@@ -215,22 +206,22 @@ def print_resource_summary():
                 output_lines.append(f"      Utilization: GPU {device['gpu_utilization_percent']}%, "
                                   f"Memory {device['memory_utilization_percent']}%")
     
-    # TensorFlow GPU detection
+    # TensorFlow GPU software recognition
     tf_info = get_tensorflow_info()
     output_lines.append("")
-    output_lines.append("TensorFlow GPU Detection:")
+    output_lines.append("TensorFlow GPU Recognition:")
     if 'error' in tf_info:
         output_lines.append(f"   Error: {tf_info['error']}")
     else:
-        output_lines.append(f"   TensorFlow detects {tf_info.get('gpu_devices', 'N/A')} GPU(s)")
+        output_lines.append(f"   TensorFlow can access {tf_info.get('gpu_devices', 'N/A')} GPU(s)")
         if tf_info.get('gpu_devices', 0) > 0:
             for i, name in enumerate(tf_info.get('gpu_names', [])):
                 growth = tf_info.get('memory_growth', [None]*tf_info.get('gpu_devices', 0))[i] if 'memory_growth' in tf_info else None
                 growth_str = f", Memory growth: {growth}" if growth is not None else ""
                 output_lines.append(f"      {name}{growth_str}")
-        output_lines.append(f"   Built with CUDA: {tf_info.get('built_with_cuda', 'N/A')}")
+        output_lines.append(f"   Built with CUDA support: {tf_info.get('built_with_cuda', 'N/A')}")
     
-    output_lines.append("=" * 60)
+    output_lines.append("=" * 45)
     
     # Display as monospace, no background
     display(Markdown(f"<pre>{'\n'.join(output_lines)}</pre>"))
