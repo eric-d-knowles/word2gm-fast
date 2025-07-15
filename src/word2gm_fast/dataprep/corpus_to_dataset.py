@@ -1,6 +1,6 @@
 """
 Load a 5-gram corpus, filter out malformed lines, and prepare a TensorFlow dataset
-for skip-gram training. Fast, tracing-safe implementation using TensorFlow ops only.
+for skip-gram training.
 """
 
 import tensorflow as tf

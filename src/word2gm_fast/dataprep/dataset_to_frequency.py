@@ -12,9 +12,7 @@ from typing import Dict
 def dataset_to_frequency(dataset: tf.data.Dataset) -> Dict[str, int]:
     """
     Convert a TextLineDataset to a frequency table for all unique tokens.
-    
-    Uses TensorFlow ops for optimized performance and pipeline integration.
-    
+        
     Parameters
     ----------
     dataset : tf.data.Dataset

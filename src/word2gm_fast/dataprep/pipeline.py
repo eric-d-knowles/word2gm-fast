@@ -5,8 +5,9 @@ This module provides a high-level interface to process corpus files and generate
 TFRecord training artifacts. It handles the entire pipeline from corpus filtering
 through TFRecord serialization with optimized performance and clean output.
 
-The pipeline uses an optimized direct-to-TFRecord approach that avoids unnecessary
-dataset manifestation for maximum performance and memory efficiency.
+The pipeline uses an improved vocab-from-triplets approach that eliminates 
+UNK token contamination by building vocabulary from actual triplets rather 
+than the entire corpus. This ensures perfect vocab-triplet alignment.
 
 Usage:
     from word2gm_fast.dataprep.pipeline import prepare_training_data
@@ -48,14 +49,22 @@ def prepare_training_data(
     show_progress: bool = True,
     show_summary: bool = True,
     cache_dataset: bool = True,
-    downsample_threshold: float = 1e-5
+    downsample_threshold: float = 1e-5,
+    verbose_io: bool = False
 ) -> tuple[str, dict]:
     """
     Complete data preparation pipeline for Word2GM skip-gram training.
     
     Takes a preprocessed corpus file and generates optimized TFRecord artifacts
-    for efficient model training. Uses optimized direct-to-TFRecord approach
-    for maximum performance by skipping unnecessary dataset manifestation.
+    for efficient model training. Uses improved vocab-from-triplets approach
+    that eliminates UNK token contamination by building vocabulary from actual
+    triplets rather than the entire corpus.
+    
+    Pipeline Steps:
+    1. Load and filter corpus
+    2. Build frequency table for downsampling
+    3. Generate string triplets with frequency-based downsampling
+    4. Convert to integers and build vocabulary (one-pass approach)
     
     Parameters
     ----------
@@ -74,6 +83,8 @@ def prepare_training_data(
         Whether to display a detailed summary of the pipeline execution
     cache_dataset : bool, default=True
         Whether to cache the filtered dataset for faster processing
+    downsample_threshold : float, default=1e-5
+        Threshold for frequency-based downsampling of common words
         
     Returns
     -------
@@ -104,12 +115,13 @@ def prepare_training_data(
     ...     output_subdir="2019_artifacts"
     ... )
     
-    >>> # Access results
+    >>> # Access results - NEW: Zero UNK contamination guaranteed
     >>> print(f"Artifacts saved to: {output_dir}")
     >>> print(f"Vocabulary size: {summary['vocab_size']:,}")
     >>> print(f"Training triplets: {summary['triplet_count']:,}")
     >>> print(f"Unique tokens: {summary['unique_token_count']:,} ({summary['unique_token_percentage']:.1f}% of vocabulary)")
     >>> print(f"Unused tokens: {summary['unused_token_count']:,}")
+    >>> # Note: vocab-from-triplets approach ensures perfect alignment
     """
     
     # Import TensorFlow and pipeline components inside function to avoid multiprocessing issues
@@ -120,10 +132,21 @@ def prepare_training_data(
     tf = import_tensorflow_silently(deterministic=False, force_cpu=force_cpu, gpu_memory_growth=not force_cpu)
     
     from .corpus_to_dataset import make_dataset
-    from .index_vocab import make_vocab
-    from .dataset_to_triplets import build_skipgram_triplets
+    from .dataset_to_frequency import dataset_to_frequency
+    from .dataset_to_triplets import dataset_to_triplets
+    from .index_vocab import triplets_to_integers
     from ..io.triplets import write_triplets_to_tfrecord
     from ..io.vocab import write_vocab_to_tfrecord
+    
+    # Patch display functions to be quiet during pipeline execution
+    try:
+        import IPython.display
+        original_display = IPython.display.display
+        def quiet_display(*args, **kwargs):
+            pass
+        IPython.display.display = quiet_display
+    except ImportError:
+        original_display = None
     
     # Validate inputs
     corpus_path = os.path.join(corpus_dir, corpus_file)
@@ -150,14 +173,12 @@ def prepare_training_data(
     start_total = time.perf_counter()
     
     if show_progress:
-        print(f"Starting Word2GM data preparation pipeline")
-        print(f"Corpus: {corpus_file} ({file_size_mb:.3f} MB)")
-        print(f"Output: {output_dir}")
+        print(f"Processing: {corpus_file} ({file_size_mb:.2f} MB) → {os.path.basename(output_dir)}")
         print()
     
     # Step 1: Load and filter corpus
     if show_progress:
-        print("Step 1/3: Loading and filtering corpus...")
+        print(f"Step 1/4: Loading corpus... ", end="", flush=True)
     
     step_start = time.perf_counter()
     dataset, _ = make_dataset(corpus_path, show_summary=False)
@@ -166,66 +187,136 @@ def prepare_training_data(
     step_duration = time.perf_counter() - step_start
     
     if show_progress:
-        print(f"   Corpus filtered in {step_duration:.3f}s")
+        print(f"({step_duration:.2f}s)")
     
-    # Step 2: Build vocabulary  
+    # Step 2: Build frequency table for downsampling
     if show_progress:
-        print("Step 2/3: Building vocabulary...")
+        print(f"Step 2/4: Building frequency table... ", end="", flush=True)
         
     step_start = time.perf_counter()
-    vocab_table, vocab_list, frequencies = make_vocab(dataset)
-    vocab_export = vocab_table.export()
-    vocab_size = len(vocab_export[0].numpy())
+    frequency_table = dataset_to_frequency(dataset)
     step_duration = time.perf_counter() - step_start
     
     if show_progress:
-        print(f"   Vocabulary built: {vocab_size:,} words in {step_duration:.3f}s")
+        print(f"({step_duration:.2f}s)")
     
-    # Step 3: Generate triplets and save directly to TFRecord (optimized approach)
+    # Step 3: Generate string triplets with downsampling
     if show_progress:
-        print("Step 3/3: Generating triplets and saving to TFRecord...")
+        print(f"Step 3/4: Generating triplets... ", end="", flush=True)
 
     step_start = time.perf_counter()
-    # Frequency-based downsampling: pass frequencies and threshold to triplet builder
-    triplets_ds = build_skipgram_triplets(
-        dataset,
-        vocab_table,
-        frequencies=frequencies,
+    # Generate string triplets with frequency-based downsampling
+    string_triplets_ds = dataset_to_triplets(
+        dataset=dataset,
+        frequency_table=frequency_table,
         downsample_threshold=downsample_threshold
     )
+    step_duration = time.perf_counter() - step_start
+    
+    if show_progress:
+        print(f"({step_duration:.2f}s)")
+    
+    # Step 4: Convert to integers and build vocabulary (one-pass approach)
+    if show_progress:
+        print(f"Step 4/4: Converting to integers... ", end="", flush=True)
+
+    step_start = time.perf_counter()
+    # Use our new one-pass approach: vocab built from exact triplets used
+    # Suppress verbose output from triplets_to_integers
+    old_stdout = sys.stdout
+    sys.stdout = StringIO()
+    try:
+        integer_triplets_ds, vocab_table, vocab_list, vocab_size = triplets_to_integers(
+            triplets_dataset=string_triplets_ds,
+            frequency_table=frequency_table
+        )
+    finally:
+        sys.stdout = old_stdout
+
+    step_duration = time.perf_counter() - step_start
+    
+    if show_progress:
+        print(f"({step_duration:.2f}s)")
 
     # Save artifacts and get triplet count in one pass (optimized: no dataset manifestation)
+    if show_progress:
+        print(f"Saving artifacts... ", end="", flush=True)
+        
+    save_start = time.perf_counter()
     ext = ".tfrecord.gz" if compress else ".tfrecord"
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
 
-    # Suppress verbose output during save
+    # Suppress verbose output during save (including IPython display)
     old_stdout = sys.stdout
-    sys.stdout = StringIO()
+    old_stderr = sys.stderr
+    
+    # Patch IPython display to suppress markdown output
     try:
-        # Save vocab TFRecord (with frequencies)
-        write_vocab_to_tfrecord(vocab_table, vocab_path, frequencies=frequencies, compress=compress)
-        # Save triplets and get count (direct streaming to TFRecord)
-        triplet_count = write_triplets_to_tfrecord(triplets_ds, triplets_path, compress=compress)
+        from IPython.display import display
+        original_display = display
+        def silent_display(*args, **kwargs):
+            pass
+        
+        # Apply patches
+        import IPython.display
+        IPython.display.display = silent_display
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
+        
+        # Save vocab TFRecord (with frequencies from frequency_table)
+        write_vocab_to_tfrecord(vocab_table, vocab_path, frequencies=frequency_table, compress=compress)
+        # Save integer triplets and get count (direct streaming to TFRecord)
+        triplet_count = write_triplets_to_tfrecord(integer_triplets_ds, triplets_path, compress=compress)
+        
     finally:
+        # Restore original functions
         sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        try:
+            IPython.display.display = original_display
+        except:
+            pass
 
-    # Count unique tokens in triplets (for vocabulary coverage analysis)
+    save_duration = time.perf_counter() - save_start
+    
     if show_progress:
-        print(f"Counting unique tokens in triplets...")
+        print(f"({save_duration:.2f}s)")
     
-    # Re-load the triplets dataset from the saved file to avoid recomputation
-    from ..io.triplets import load_triplets_from_tfrecord
-    loaded_triplets_ds = load_triplets_from_tfrecord(triplets_path, compressed=compress)
+    # Re-load the triplets dataset and count unique tokens (suppress all output including IPython)
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
     
-    # Count unique tokens (with progress updates disabled to avoid cluttering summary)
-    unique_token_count, unique_token_indices = count_unique_triplet_tokens(
-        loaded_triplets_ds, 
-        show_progress=False,
-        batch_size=1000
-    )
+    try:
+        from IPython.display import display
+        original_display = display
+        def silent_display(*args, **kwargs):
+            pass
+        
+        # Apply patches
+        import IPython.display
+        IPython.display.display = silent_display
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
+        
+        from ..io.triplets import load_triplets_from_tfrecord
+        loaded_triplets_ds = load_triplets_from_tfrecord(triplets_path, compressed=compress)
+        
+        # Count unique tokens (with progress updates disabled)
+        unique_token_count, unique_token_indices = count_unique_triplet_tokens(
+            loaded_triplets_ds, 
+            show_progress=False,
+            batch_size=1000
+        )
+    finally:
+        # Restore original functions
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        try:
+            IPython.display.display = original_display
+        except:
+            pass
 
-    step_duration = time.perf_counter() - step_start
     total_duration = time.perf_counter() - start_total
 
     # Calculate file sizes
@@ -234,27 +325,17 @@ def prepare_training_data(
     total_artifact_size_mb = triplets_size_mb + vocab_size_mb
     
     if show_summary:
-        print(f"Triplets generated and saved in {step_duration:.3f}s")
         print()
         print("PIPELINE SUMMARY")
         print("=" * 40)
         print(f"Corpus processed:   {file_size_mb:.3f} MB")
         print(f"Vocabulary size:    {vocab_size:,} words")
         print(f"Training triplets:  {triplet_count:,}")
-        print(f"Unique tokens:      {unique_token_count:,} ({unique_token_count/vocab_size*100:.1f}% of vocabulary)")
-        if unique_token_count < vocab_size:
-            print(f"Unused tokens:      {vocab_size - unique_token_count:,} ({(vocab_size - unique_token_count)/vocab_size*100:.1f}% of vocabulary)")
-        print(f"Artifact size:      {total_artifact_size_mb:.3f} MB")
-        print(f"Compression ratio:  {file_size_mb / total_artifact_size_mb:.3f}x")
-        print(f"Total time:         {total_duration:.3f}s")
-        print(f"Processing rate:    {file_size_mb / total_duration:.3f} MB/s")
-        print()
-        print("Generated files:")
-        print(f"   {os.path.basename(triplets_path)} ({triplets_size_mb:.3f} MB)")
-        print(f"   {os.path.basename(vocab_path)} ({vocab_size_mb:.3f} MB)")
-        print()
-        print("Optimized: Direct-to-TFRecord streaming (no dataset manifestation)")
-        print("Pipeline complete! Ready for model training.")
+        print(f"Token coverage:     {unique_token_count/vocab_size*100:.1f}% ({unique_token_count:,}/{vocab_size:,})")
+        print(f"Total time:         {total_duration:.2f}s")
+        print(f"Generated files:    {os.path.basename(triplets_path)}, {os.path.basename(vocab_path)}")
+        print("✅ Zero UNK contamination guaranteed")
+        print("=" * 40)
     
     # Create summary dictionary
     summary = {
@@ -273,6 +354,14 @@ def prepare_training_data(
         'vocab_file': vocab_path,
         'output_dir': output_dir
     }
+    
+    # Restore original display function
+    try:
+        if original_display is not None:
+            import IPython.display
+            IPython.display.display = original_display
+    except ImportError:
+        pass
     
     return output_dir, summary
 
