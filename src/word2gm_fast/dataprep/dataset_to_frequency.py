@@ -7,6 +7,10 @@ for negative sampling and frequency-based downsampling in skip-gram training.
 
 import tensorflow as tf
 from typing import Dict
+from ..utils.tf_silence import import_tf_quietly
+
+# Import TensorFlow silently
+tf = import_tf_quietly(force_cpu=True)
 
 
 def dataset_to_frequency(dataset: tf.data.Dataset) -> Dict[str, int]:

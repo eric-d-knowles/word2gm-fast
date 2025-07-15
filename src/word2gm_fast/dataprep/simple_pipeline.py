@@ -35,7 +35,7 @@ def process_single_year(corpus_dir: str, year: str, compress: bool = True) -> Di
     from .index_vocab import triplets_to_integers
     from ..io.triplets import write_triplets_to_tfrecord
     from ..io.vocab import write_vocab_to_tfrecord
-    from ..utils.tf_silence import import_tf_quietly
+    from ..utils.tf_silence import import_tf_quietly, silence_tensorflow
     
     # Silent TensorFlow import
     tf = import_tf_quietly(force_cpu=True)
@@ -52,40 +52,35 @@ def process_single_year(corpus_dir: str, year: str, compress: bool = True) -> Di
         if not os.path.exists(corpus_path):
             return {"error": f"Corpus file not found: {corpus_path}"}
         
-        # 1. Load corpus
-        dataset, _ = make_dataset(corpus_path, show_summary=False)
-        
-        # 2. Build frequency table
-        frequency_table = dataset_to_frequency(dataset)
-        
-        # 3. Generate string triplets
-        string_triplets = dataset_to_triplets(
-            dataset=dataset,
-            frequency_table=frequency_table,
-            downsample_threshold=1e-5
-        )
-        
-        # 4. Convert to integers and build vocab
-        integer_triplets, vocab_table, vocab_list, vocab_size = triplets_to_integers(
-            triplets_dataset=string_triplets,
-            frequency_table=frequency_table
-        )
-        
-        # 5. Save artifacts
-        ext = ".tfrecord.gz" if compress else ".tfrecord"
-        triplets_path = os.path.join(output_dir, f"triplets{ext}")
-        vocab_path = os.path.join(output_dir, f"vocab{ext}")
-        
-        # Save files (suppress output)
-        import sys
-        from io import StringIO
-        old_stdout = sys.stdout
-        sys.stdout = StringIO()
-        try:
+        # Wrap all TensorFlow operations in silence context
+        with silence_tensorflow():
+            # 1. Load corpus
+            dataset, _ = make_dataset(corpus_path, show_summary=False)
+            
+            # 2. Build frequency table
+            frequency_table = dataset_to_frequency(dataset)
+            
+            # 3. Generate string triplets
+            string_triplets = dataset_to_triplets(
+                dataset=dataset,
+                frequency_table=frequency_table,
+                downsample_threshold=1e-5
+            )
+            
+            # 4. Convert to integers and build vocab
+            integer_triplets, vocab_table, vocab_list, vocab_size = triplets_to_integers(
+                triplets_dataset=string_triplets,
+                frequency_table=frequency_table
+            )
+            
+            # 5. Save artifacts
+            ext = ".tfrecord.gz" if compress else ".tfrecord"
+            triplets_path = os.path.join(output_dir, f"triplets{ext}")
+            vocab_path = os.path.join(output_dir, f"vocab{ext}")
+            
+            # Save files
             write_vocab_to_tfrecord(vocab_table, vocab_path, frequencies=frequency_table, compress=compress)
             triplet_count = write_triplets_to_tfrecord(integer_triplets, triplets_path, compress=compress)
-        finally:
-            sys.stdout = old_stdout
         
         duration = time.perf_counter() - start_time
         

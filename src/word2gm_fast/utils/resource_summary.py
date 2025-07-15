@@ -10,9 +10,12 @@ import socket
 import subprocess
 import psutil
 import pynvml
-import tensorflow as tf
-from IPython.display import display, Markdown
 import re
+from IPython.display import display, Markdown
+from ..utils.tf_silence import import_tf_quietly
+
+# Import TensorFlow silently
+tf = import_tf_quietly(force_cpu=False)
 
 
 def get_hostname():

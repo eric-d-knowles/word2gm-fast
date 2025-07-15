@@ -81,13 +81,3 @@ def import_tf_quietly(force_cpu=False):
     tf.random.set_seed(42)
     
     return tf
-
-
-# Alias for backwards compatibility
-def import_tensorflow_silently(deterministic=False, force_cpu=False, gpu_memory_growth=True):
-    """
-    Import TensorFlow with silencing (backwards compatibility).
-    
-    This is just a wrapper around import_tf_quietly for existing code.
-    """
-    return import_tf_quietly(force_cpu=force_cpu)

@@ -3,8 +3,12 @@ Load a 5-gram corpus, filter out malformed lines, and prepare a TensorFlow datas
 for skip-gram training.
 """
 
-import tensorflow as tf
 from typing import Optional, Tuple
+from ..utils.tf_silence import import_tf_quietly
+from IPython import display
+
+# Import TensorFlow silently
+tf = import_tf_quietly(force_cpu=True)
 
 
 def validate_5gram_line(line: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
@@ -47,9 +51,17 @@ def preview_dataset(
     buffer_size : int, optional
         Buffer size for shuffling (default is 1000).
     """
-    print(f"\nPreviewing {n} random retained 5-grams:")
-    for line in dataset.shuffle(buffer_size).take(n):
-        print("  ", line.numpy().decode("utf-8"))
+    lines = [
+        "   " + line.numpy().decode("utf-8")
+        for line in dataset.shuffle(buffer_size).take(n)
+    ]
+    display.display_markdown(
+        "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>\nPreview of {n} random retained 5-grams:<br><br>{lines}<br></span>".format(
+            n=n,
+            lines="<br>".join(["&nbsp;&nbsp;&nbsp;" + line for line in lines])
+        ),
+        raw=True
+    )
 
 
 def print_dataset_summary(
@@ -83,17 +95,106 @@ def print_dataset_summary(
         "rejected": rejected_count,
         "total": total_count
     }
-    print("\nSummary:")
-    for k, v in summary.items():
-        print(f"  {k}: {v}")
+    display.display_markdown(
+        "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>\nSummary:<br><br>{lines}<br></span>".format(
+            lines="<br>".join([f"- {k.capitalize()}: {v}" for k, v in summary.items()]),
+        ),
+        raw=True
+    )
     return summary
+
+
+def print_dataset_properties(dataset: tf.data.Dataset, title: str = "Dataset Properties") -> None:
+    """
+    Print dataset properties using formatted display.
+
+    Parameters
+    ----------
+    dataset : tf.data.Dataset
+        The dataset to inspect.
+    title : str, optional
+        Title for the properties display (default is "Dataset Properties").
+    """
+    properties = {}
+    
+    # Check common dataset properties
+    try:
+        properties["Element spec"] = str(dataset.element_spec)
+    except Exception:
+        properties["Element spec"] = "Unknown"
+    
+    # Check for cardinality (number of elements)
+    try:
+        cardinality = dataset.cardinality().numpy()
+        if cardinality == tf.data.INFINITE_CARDINALITY:
+            properties["Cardinality"] = "Infinite"
+        elif cardinality == tf.data.UNKNOWN_CARDINALITY:
+            properties["Cardinality"] = "Unknown"
+        else:
+            properties["Cardinality"] = str(cardinality)
+    except Exception:
+        properties["Cardinality"] = "Unknown"
+    
+    # Try to get additional properties from the dataset's options
+    try:
+        options = dataset.options()
+        if hasattr(options, 'deterministic') and options.deterministic is not None:
+            properties["Deterministic"] = str(options.deterministic)
+        elif hasattr(options, 'experimental_deterministic') and options.experimental_deterministic is not None:
+            properties["Deterministic"] = str(options.experimental_deterministic)
+        
+        if hasattr(options, 'threading') and options.threading is not None:
+            threading_opts = options.threading
+            threading_details = []
+            if hasattr(threading_opts, 'max_intra_op_parallelism') and threading_opts.max_intra_op_parallelism is not None:
+                threading_details.append(f"intra_op={threading_opts.max_intra_op_parallelism}")
+            if hasattr(threading_opts, 'private_threadpool_size') and threading_opts.private_threadpool_size is not None:
+                threading_details.append(f"threadpool={threading_opts.private_threadpool_size}")
+            
+            if threading_details:
+                properties["Threading"] = ", ".join(threading_details)
+            else:
+                properties["Threading"] = "Default settings"
+    except Exception:
+        pass
+    
+    # Check if dataset appears to be cached, mapped, etc. by inspecting string representation
+    dataset_str = str(dataset)
+    transformations = []
+    if "MapDataset" in dataset_str:
+        transformations.append("Mapped")
+    if "FilterDataset" in dataset_str:
+        transformations.append("Filtered")
+    if "CacheDataset" in dataset_str:
+        transformations.append("Cached")
+    if "BatchDataset" in dataset_str:
+        transformations.append("Batched")
+    if "ShuffleDataset" in dataset_str:
+        transformations.append("Shuffled")
+    if "RepeatDataset" in dataset_str:
+        transformations.append("Repeated")
+    if "PrefetchDataset" in dataset_str:
+        transformations.append("Prefetched")
+    
+    if transformations:
+        properties["Transformations"] = ", ".join(transformations)
+    
+    # Display using the same format as other functions
+    display.display_markdown(
+        "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>\n{title}:<br><br>{lines}<br></span>".format(
+            title=title,
+            lines="<br>".join([f"- {k}: {v}" for k, v in properties.items()]),
+        ),
+        raw=True
+    )
 
 
 def make_dataset(
     filepath: str,
     preview_n: int = 0,
     cache: bool = False,
-    show_summary: bool = False
+    show_summary: bool = False,
+    show_properties: bool = False
 ) -> Tuple[tf.data.Dataset, Optional[dict]]:
     """
     Load and filter a 5-gram corpus with high performance and tracing safety.
@@ -108,6 +209,8 @@ def make_dataset(
         Whether to cache the resulting dataset (default is False).
     show_summary : bool, optional
         Whether to compute and print summary counts (default is False).
+    show_properties : bool, optional
+        Whether to display dataset properties (default is False).
 
     Returns
     -------
@@ -129,6 +232,8 @@ def make_dataset(
         dataset = dataset.cache()
     if preview_n > 0:
         preview_dataset(dataset, preview_n)
+    if show_properties:
+        print_dataset_properties(dataset, "Processed Dataset Properties")
     if show_summary:
         summary = print_dataset_summary(dataset, filepath)
         return dataset, summary
