@@ -1,5 +1,5 @@
 """
-Load a 5-gram corpus, filter out malformed lines, and prepare a TensorFlow dataset
+Load a 5-gram corpus, filter out invalid lines, and prepare a TensorFlow dataset
 for skip-gram training.
 """
 
@@ -68,7 +68,8 @@ def print_dataset_summary(
     dataset: tf.data.Dataset, filepath: str
 ) -> dict:
     """
-    Print a summary of retained, rejected, and total line counts for a dataset.
+    Print a summary of retained, rejected, and total line counts for a dataset. For large corpora,
+    this is time-consuming.
 
     Parameters
     ----------
@@ -179,7 +180,7 @@ def print_dataset_properties(dataset: tf.data.Dataset, title: str = "Dataset Pro
     if transformations:
         properties["Transformations"] = ", ".join(transformations)
     
-    # Display using the same format as other functions
+    # Display the properties
     display.display_markdown(
         "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>\n{title}:<br><br>{lines}<br></span>".format(
             title=title,

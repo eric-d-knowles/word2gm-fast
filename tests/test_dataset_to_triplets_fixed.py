@@ -246,12 +246,12 @@ class TestDownsampling:
         # Downsampling should reduce total triplets
         assert summary_ds["total_triplets"] <= summary_no_ds["total_triplets"]
     
-    def test_high_threshold_keeps_all(self, sample_5gram_dataset, sample_frequency_table):
-        """Test that high threshold effectively disables downsampling."""
+    def test_threshold_zero_keeps_all(self, sample_5gram_dataset, sample_frequency_table):
+        """Test that threshold=0 effectively disables downsampling."""
         triplets_ds, summary = dataset_to_triplets(
             dataset=sample_5gram_dataset,
             frequency_table=sample_frequency_table,
-            downsample_threshold=1.0,  # High threshold = no downsampling
+            downsample_threshold=0.0,  # Essentially no downsampling
             show_summary=True
         )
         

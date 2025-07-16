@@ -7,7 +7,7 @@ Provides functions to save and load skip-gram triplets datasets as TFRecord file
 import tensorflow as tf
 import time
 from typing import List, Optional, Union
-from IPython.display import display, Markdown
+from IPython import display
 
 
 def write_triplets_to_tfrecord(
@@ -35,7 +35,10 @@ def write_triplets_to_tfrecord(
     if compress and not output_path.endswith(".gz"):
         output_path += ".gz"
     options = tf.io.TFRecordOptions(compression_type="GZIP") if compress else None
-    display(Markdown(f"<pre>Writing TFRecord to: {output_path}</pre>"))
+    display.display_markdown(
+        f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Writing TFRecord to: {output_path}</span>",
+        raw=True
+    )
     start = time.perf_counter()
     count = 0
     with tf.io.TFRecordWriter(output_path, options=options) as writer:
@@ -55,7 +58,10 @@ def write_triplets_to_tfrecord(
             writer.write(example.SerializeToString())
             count += 1
     duration = time.perf_counter() - start
-    display(Markdown(f"<pre>Write complete. Triplets written: {count:,}</pre>"))
+    display.display_markdown(
+        f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Write complete. Triplets written: {count:,}</span>",
+        raw=True
+    )
     return count
 
 
@@ -113,7 +119,7 @@ def load_triplets_from_tfrecord(
 
     compression_type = "GZIP" if compressed else None
 
-    display(Markdown(f"<pre>Loading triplet TFRecord from: {tfrecord_path}</pre>"))
+    display.display_markdown(f"<pre>Loading triplet TFRecord from: {tfrecord_path}</pre>")
     start = time.perf_counter()
 
     raw_ds = tf.data.TFRecordDataset(
@@ -129,6 +135,6 @@ def load_triplets_from_tfrecord(
     )
 
     duration = time.perf_counter() - start
-    display(Markdown(f"<pre>Triplet TFRecord loaded and parsed</pre>"))
+    display.display_markdown(f"<pre>Triplet TFRecord loaded and parsed</pre>")
 
     return parsed_ds

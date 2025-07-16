@@ -44,7 +44,8 @@ def preview_integer_triplets(
 
 def print_vocab_summary(
     vocab_list: list, vocab_table: tf.lookup.StaticHashTable, 
-    frequency_table: dict = None, title: str = "Vocabulary Summary"
+    frequency_table: dict = None, title: str = "Vocabulary Summary",
+    triplet_token_counts: dict = None
 ) -> dict:
     """
     Print a summary of the vocabulary and integer mapping.
@@ -59,6 +60,8 @@ def print_vocab_summary(
         Token frequencies if available.
     title : str, optional
         Title for the summary display.
+    triplet_token_counts : dict, optional
+        Token counts from actual triplets (takes precedence over frequency_table).
 
     Returns
     -------
@@ -76,10 +79,16 @@ def print_vocab_summary(
         "highest_index": vocab_size - 1 if vocab_size > 0 else 0
     }
     
-    # Add frequency statistics if available
-    if frequency_table:
-        total_tokens = sum(frequency_table.values())
-        most_frequent = sorted(frequency_table.items(), key=lambda x: x[1], reverse=True)[:5]
+    # Add frequency statistics if available (for internal use, not displayed)
+    token_counts_source = triplet_token_counts if triplet_token_counts else frequency_table
+    if token_counts_source:
+        # Calculate total tokens based on vocabulary that actually appears in triplets
+        vocab_set = set(vocab_list)
+        total_tokens = sum(freq for token, freq in token_counts_source.items() if token in vocab_set)
+        most_frequent = sorted(
+            [(token, freq) for token, freq in token_counts_source.items() if token in vocab_set],
+            key=lambda x: x[1], reverse=True
+        )[:5]
         summary["total_tokens"] = total_tokens
         summary["most_frequent"] = most_frequent
     
@@ -90,11 +99,6 @@ def print_vocab_summary(
         f"- UNK token: {summary['unk_token']} (index {summary['lowest_index']})",
         f"- Sample tokens: {', '.join(summary['sample_tokens'])}"
     ]
-    
-    if frequency_table:
-        lines.append(f"- Total token instances: {summary['total_tokens']:,}")
-        freq_display = ", ".join([f"{tok}({freq})" for tok, freq in summary['most_frequent']])
-        lines.append(f"- Most frequent: {freq_display}")
     
     display.display_markdown(
         "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>\n{title}:<br><br>{lines}<br></span>".format(
@@ -319,6 +323,7 @@ def triplets_to_integers(
     # Collect ALL triplets into memory and extract unique tokens
     all_triplets = []
     unique_tokens = set()
+    triplet_token_counts = {}  # Count tokens from actual triplets
     
     for triplet in triplets_dataset:
         center, positive, negative = triplet.numpy()
@@ -332,6 +337,10 @@ def triplets_to_integers(
         triplet_tuple = (center_str, positive_str, negative_str)
         all_triplets.append(triplet_tuple)
         unique_tokens.update(triplet_tuple)
+        
+        # Count token occurrences in triplets
+        for token in triplet_tuple:
+            triplet_token_counts[token] = triplet_token_counts.get(token, 0) + 1
     
     # Build vocabulary from collected tokens
     vocab_tokens = sorted(unique_tokens - {"UNK"})  # Remove UNK if present
@@ -379,7 +388,10 @@ def triplets_to_integers(
         print_dataset_properties(integer_dataset, "Integer Triplets Dataset Properties")
     
     if show_summary:
-        summary = print_vocab_summary(vocab_list, vocab_table, frequency_table, "Vocabulary Summary")
+        summary = print_vocab_summary(
+            vocab_list, vocab_table, frequency_table, "Vocabulary Summary", 
+            triplet_token_counts
+        )
         return integer_dataset, vocab_table, vocab_list, vocab_size, summary
     
     return integer_dataset, vocab_table, vocab_list, vocab_size, None
