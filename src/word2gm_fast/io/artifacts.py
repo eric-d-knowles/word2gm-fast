@@ -6,14 +6,15 @@ vocabulary tables and triplets datasets as TFRecord files.
 """
 
 import os
-import json
-import gzip
-import tensorflow as tf
+from ..utils.tf_silence import import_tf_quietly
+from IPython import display
 from typing import Dict, Optional, Union
-from IPython.display import display, Markdown
 from .vocab import write_vocab_to_tfrecord
 from .triplets import write_triplets_to_tfrecord, load_triplets_from_tfrecord
 from .tables import create_token_to_index_table, create_index_to_token_table
+
+# Import TensorFlow silently
+tf = import_tf_quietly(force_cpu=True)
 
 
 def save_pipeline_artifacts(
@@ -49,7 +50,10 @@ def save_pipeline_artifacts(
     ext = ".tfrecord.gz" if compress else ".tfrecord"
     vocab_path = os.path.join(output_dir, f"vocab{ext}")
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
-    display(Markdown(f"<pre>Saving pipeline artifacts to: {output_dir}</pre>"))
+    display.display_markdown(
+        f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Saving pipeline artifacts to: {output_dir}</span>",
+        raw=True
+    )
     
     # Save vocabulary TFRecord
     # Try to get frequencies if available (from vocab_table, vocab_list, frequencies tuple)
@@ -73,7 +77,10 @@ def save_pipeline_artifacts(
         'compressed': compress,
         'output_dir': output_dir
     }
-    display(Markdown("<pre>All artifacts saved successfully!</pre>"))
+    display.display_markdown(
+        "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>All artifacts saved successfully!</span>",
+        raw=True
+    )
     return artifacts
 
 
@@ -116,8 +123,14 @@ def load_pipeline_artifacts(
     triplets_path = os.path.join(output_dir, f"triplets{ext}")
 
     if filter_to_triplets:
-        display(Markdown(f"<pre>Loading filtered pipeline artifacts from: {output_dir}</pre>"))
-        display(Markdown(f"<pre>Filtering vocabulary to tokens that appear in triplets...</pre>"))
+        display.display_markdown(
+            f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Loading filtered pipeline artifacts from: {output_dir}</span>",
+            raw=True
+        )
+        display.display_markdown(
+            "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Filtering vocabulary to tokens that appear in triplets...</span>",
+            raw=True
+        )
         
         # Load vocabulary tables with filtering
         token_to_index_table = create_token_to_index_table(
@@ -131,7 +144,10 @@ def load_pipeline_artifacts(
             compressed=compressed
         )
     else:
-        display(Markdown(f"<pre>Loading pipeline artifacts from: {output_dir}</pre>"))
+        display.display_markdown(
+            f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Loading pipeline artifacts from: {output_dir}</span>",
+            raw=True
+        )
         
         # Load vocabulary tables without filtering (original behavior)
         token_to_index_table = create_token_to_index_table(vocab_path, compressed=compressed)
@@ -154,68 +170,13 @@ def load_pipeline_artifacts(
     }
 
     if filter_to_triplets:
-        display(Markdown("<pre>Filtered artifacts loaded successfully!</pre>"))
+        display.display_markdown(
+            "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Filtered artifacts loaded successfully!</span>",
+            raw=True
+        )
     else:
-        display(Markdown("<pre>All artifacts loaded successfully!</pre>"))
+        display.display_markdown(
+            "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>All artifacts loaded successfully!</span>",
+            raw=True
+        )
     return artifacts
-
-
-def save_metadata(metadata: Dict, output_path: str, compress: bool = True) -> str:
-    """
-    Save metadata dictionary to a JSON file, optionally compressed.
-    
-    Parameters
-    ----------
-    metadata : Dict
-        Dictionary containing metadata to save.
-    output_path : str
-        Path to save the metadata file.
-    compress : bool, optional
-        Whether to compress the file with gzip. Default is True.
-        
-    Returns
-    -------
-    str
-        The actual path where the file was saved (may include .gz extension).
-    """
-    if compress and not output_path.endswith('.gz'):
-        output_path += '.gz'
-    
-    metadata_json = json.dumps(metadata, indent=2)
-    
-    if compress:
-        with gzip.open(output_path, 'wt', encoding='utf-8') as f:
-            f.write(metadata_json)
-    else:
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(metadata_json)
-    
-    display(Markdown(f"<pre>Metadata saved to: {output_path}</pre>"))
-    return output_path
-
-
-def load_metadata(input_path: str) -> Dict:
-    """
-    Load metadata from a JSON file, automatically detecting compression.
-    
-    Parameters
-    ----------
-    input_path : str
-        Path to the metadata file.
-        
-    Returns
-    -------
-    Dict
-        The loaded metadata dictionary.
-    """
-    is_compressed = input_path.endswith('.gz')
-    
-    if is_compressed:
-        with gzip.open(input_path, 'rt', encoding='utf-8') as f:
-            metadata = json.load(f)
-    else:
-        with open(input_path, 'r', encoding='utf-8') as f:
-            metadata = json.load(f)
-    
-    display(Markdown(f"<pre>Metadata loaded from: {input_path}</pre>"))
-    return metadata

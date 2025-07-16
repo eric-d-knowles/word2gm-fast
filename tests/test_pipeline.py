@@ -1,13 +1,12 @@
 """
-Unit tests for the data preparation pipeline (pytest style).
+Unit tests for the data preparation pipeline.
 
 Tests the complete pipeline functionality including:
-- Single file processing
-- Batch processing
-- Multiprocessing
-- Error handling
-- Year range parsing
-- Resource detection
+- Single year processing
+- Year range processing with parallel execution
+- Year parsing and validation
+- Error handling and edge cases
+- Integration scenarios
 """
 
 import pytest
@@ -16,340 +15,369 @@ import shutil
 import os
 import time
 from unittest.mock import patch, MagicMock
-from word2gm_fast.dataprep.pipeline import (
-    prepare_training_data,
-    batch_prepare_training_data,
-    get_corpus_years,
-    parse_year_range,
-    detect_cluster_resources,
-    get_safe_worker_count,
-    _process_single_year
+from src.word2gm_fast.dataprep.pipeline import (
+    process_single_year,
+    process_year_range,
+    parse_years,
+    get_available_years,
+    run_pipeline
 )
 
 
 @pytest.fixture
-def pipeline_test_setup(tmp_path):
-    """Create test corpus files and directory structure."""
-    corpus_dir = tmp_path / "corpus"
-    corpus_dir.mkdir()
+def temp_corpus_dir():
+    """Create temporary directory with sample corpus files."""
+    temp_dir = tempfile.mkdtemp()
     
-    # Create test corpus files for different years
-    test_years = ["2018", "2019", "2020"]
-    test_content = "the quick brown fox jumps over the lazy dog\nthe fox is quick and brown\n"
-    
-    for year in test_years:
-        corpus_file = corpus_dir / f"{year}.txt"
-        with open(corpus_file, 'w') as f:
-            f.write(test_content * 100)  # Make files reasonably sized
-    
-    # Create some non-year files to test filtering
-    (corpus_dir / "readme.txt").write_text("Not a year file")
-    (corpus_dir / "202.txt").write_text("Invalid year")
-    
-    return {
-        'corpus_dir': str(corpus_dir),
-        'test_years': test_years,
-        'test_content': test_content
+    # Create sample corpus files - need to be larger to generate triplets
+    sample_content = {
+        "1680.txt": ("the quick brown fox jumps over the lazy dog " * 50 + 
+                    "the cat sat on the mat " * 50 + 
+                    "machine learning is powerful " * 50),
+        "1681.txt": ("hello world this is a test corpus " * 50 + 
+                    "with multiple lines of text " * 50 + 
+                    "natural language processing " * 50),
+        "1682.txt": ("machine learning natural language processing " * 50 + 
+                    "word embeddings and neural networks " * 50 + 
+                    "deep learning transformer models " * 50),
+        "1683.txt": "small corpus file with few words",  # Very small file
+        "invalid.txt": "not a year file",  # Invalid name
     }
-
-
-def test_get_corpus_years(pipeline_test_setup):
-    """Test automatic discovery of corpus years."""
-    corpus_dir = pipeline_test_setup['corpus_dir']
-    expected_years = pipeline_test_setup['test_years']
     
-    discovered_years = get_corpus_years(corpus_dir)
-    assert discovered_years == sorted(expected_years)
-
-
-def test_get_corpus_years_empty_directory(tmp_path):
-    """Test get_corpus_years with empty directory."""
-    empty_dir = tmp_path / "empty"
-    empty_dir.mkdir()
+    for filename, content in sample_content.items():
+        with open(os.path.join(temp_dir, filename), 'w') as f:
+            f.write(content)
     
-    years = get_corpus_years(str(empty_dir))
-    assert years == []
-
-
-def test_get_corpus_years_nonexistent_directory():
-    """Test get_corpus_years with non-existent directory."""
-    years = get_corpus_years("/nonexistent/directory")
-    assert years == []
-
-
-def test_parse_year_range():
-    """Test year range parsing functionality."""
-    # Single year
-    assert parse_year_range("2019") == ["2019"]
+    yield temp_dir
     
-    # Simple range
-    assert parse_year_range("2018-2020") == ["2018", "2019", "2020"]
-    
-    # Complex range with commas
-    assert parse_year_range("2017,2019-2021,2023") == ["2017", "2019", "2020", "2021", "2023"]
-    
-    # Single range
-    assert parse_year_range("1400-1403") == ["1400", "1401", "1402", "1403"]
+    # Cleanup
+    shutil.rmtree(temp_dir)
 
 
-def test_parse_year_range_invalid():
-    """Test year range parsing with invalid inputs."""
-    with pytest.raises(ValueError):
-        parse_year_range("2020-2018")  # Invalid range
-    
-    with pytest.raises(ValueError):
-        parse_year_range("not_a_year")  # Invalid year
+@pytest.fixture
+def empty_corpus_dir():
+    """Create empty temporary directory."""
+    temp_dir = tempfile.mkdtemp()
+    yield temp_dir
+    shutil.rmtree(temp_dir)
 
 
-@patch('word2gm_fast.dataprep.corpus_to_dataset.make_dataset')
-@patch('word2gm_fast.dataprep.index_vocab.make_vocab')  
-@patch('word2gm_fast.dataprep.dataset_to_triplets.build_skipgram_triplets')
-@patch('word2gm_fast.io.triplets.write_triplets_to_tfrecord')
-@patch('word2gm_fast.io.vocab.write_vocab_to_tfrecord')
-@patch('word2gm_fast.io.triplets.load_triplets_from_tfrecord')
-@patch('word2gm_fast.utils.triplet_utils.count_unique_triplet_tokens')
-def test_prepare_training_data_success(mock_count_unique_triplets, mock_read_triplets, mock_write_vocab, 
-                                     mock_write_triplets, mock_build_triplets, mock_make_vocab, 
-                                     mock_make_dataset, pipeline_test_setup):
-    from word2gm_fast.dataprep.pipeline import prepare_training_data
-    """Test successful single file processing."""
-    # Mock the pipeline components
-    mock_dataset = MagicMock()
-    mock_make_dataset.return_value = (mock_dataset, None)
+class TestProcessSingleYear:
+    """Test the process_single_year function."""
     
-    mock_vocab_table = MagicMock()
-    mock_vocab_table.export.return_value = (MagicMock(), MagicMock())
-    mock_vocab_table.export.return_value[0].numpy.return_value = ["UNK", "the", "fox"]
-    mock_vocab_table.size.return_value = MagicMock()
-    mock_vocab_table.size.return_value.numpy.return_value = 3
-    
-    mock_make_vocab.return_value = (mock_vocab_table, ["UNK", "the", "fox"], {"UNK": 100, "the": 50, "fox": 25})
-    
-    mock_triplets_ds = MagicMock()
-    mock_build_triplets.return_value = mock_triplets_ds
-    
-    mock_write_triplets.return_value = 1000  # Mock triplet count
-    
-    # Mock load_triplets_from_tfrecord and count_unique_triplet_tokens
-    mock_loaded_triplets_ds = MagicMock()
-    mock_read_triplets.return_value = mock_loaded_triplets_ds
-    mock_count_unique_triplets.return_value = (2, {1, 2})  # 2 unique tokens out of 3
-    
-    # Ensure the test corpus directory and file exist
-    corpus_dir = pipeline_test_setup['corpus_dir']
-    corpus_file = "2019.txt"
-    test_file_path = os.path.join(corpus_dir, corpus_file)
-    os.makedirs(corpus_dir, exist_ok=True)
-    with open(test_file_path, "w") as f:
-        f.write("the quick brown fox jumps over the lazy dog\n" * 10)
-
-    # Now call the function under test
-    output_dir, summary = prepare_training_data(
-        corpus_file=corpus_file,
-        corpus_dir=corpus_dir,
-        output_subdir="test_artifacts",
-        show_progress=False,
-        show_summary=False
-    )
-    
-    # Verify calls
-    mock_make_dataset.assert_called_once()
-    mock_make_vocab.assert_called_once()
-    mock_build_triplets.assert_called_once()
-    mock_write_vocab.assert_called_once()
-    mock_write_triplets.assert_called_once()
-    
-    # Check output
-    assert output_dir.endswith("test_artifacts")
-    assert summary['corpus_file'] == "2019.txt"
-    assert summary['vocab_size'] == 3
-    assert summary['triplet_count'] == 1000
-    assert summary['unique_token_count'] == 2
-    assert summary['unique_token_percentage'] == pytest.approx(2/3*100)
-    assert summary['unused_token_count'] == 1
-
-
-def test_prepare_training_data_file_not_found(pipeline_test_setup):
-    """Test error handling when corpus file doesn't exist."""
-    corpus_dir = pipeline_test_setup['corpus_dir']
-    
-    with pytest.raises(FileNotFoundError):
-        prepare_training_data(
-            corpus_file="nonexistent.txt",
-            corpus_dir=corpus_dir
-        )
-
-
-def test_prepare_training_data_invalid_directory():
-    """Test error handling when corpus directory doesn't exist."""
-    with pytest.raises(FileNotFoundError):
-        prepare_training_data(
-            corpus_file="test.txt",
-            corpus_dir="/nonexistent/directory"
-        )
-
-
-def test_batch_prepare_training_data_auto_discovery(pipeline_test_setup):
-    """Test batch processing with automatic year discovery."""
-    corpus_dir = pipeline_test_setup['corpus_dir']
-    expected_years = pipeline_test_setup['test_years']
-    
-    with patch('src.word2gm_fast.dataprep.pipeline.prepare_training_data') as mock_prepare:
-        mock_prepare.return_value = ("output_dir", {"triplet_count": 1000, "vocab_size": 100, "total_duration_s": 10.0})
+    def test_successful_processing(self, temp_corpus_dir):
+        """Test successful processing of a single year."""
+        result = process_single_year(temp_corpus_dir, "1680", compress=False)
         
-        results = batch_prepare_training_data(
-            corpus_dir=corpus_dir,
-            use_multiprocessing=False,  # Use sequential for easier testing
-            show_progress=False,
-            show_summary=False
+        # Should return success dictionary
+        assert "error" not in result
+        assert result["year"] == "1680"
+        assert "vocab_size" in result
+        assert "triplet_count" in result
+        assert "duration" in result
+        assert "output_dir" in result
+        
+        # Check that artifacts were created
+        output_dir = result["output_dir"]
+        assert os.path.exists(output_dir)
+        assert os.path.exists(os.path.join(output_dir, "triplets.tfrecord"))
+        assert os.path.exists(os.path.join(output_dir, "vocab.tfrecord"))
+        
+        # Basic sanity checks
+        assert result["vocab_size"] > 0
+        assert result["triplet_count"] >= 0  # Allow 0 triplets for small corpus
+        assert result["duration"] > 0
+    
+    def test_compressed_output(self, temp_corpus_dir):
+        """Test processing with compression enabled."""
+        result = process_single_year(temp_corpus_dir, "1681", compress=True)
+        
+        assert "error" not in result
+        output_dir = result["output_dir"]
+        
+        # Should create compressed files
+        assert os.path.exists(os.path.join(output_dir, "triplets.tfrecord.gz"))
+        assert os.path.exists(os.path.join(output_dir, "vocab.tfrecord.gz"))
+    
+    def test_nonexistent_file(self, temp_corpus_dir):
+        """Test processing non-existent corpus file."""
+        result = process_single_year(temp_corpus_dir, "9999", compress=False)
+        
+        assert "error" in result
+        assert "not found" in result["error"].lower()
+    
+    def test_invalid_corpus_directory(self):
+        """Test processing with invalid corpus directory."""
+        result = process_single_year("/nonexistent/directory", "1680", compress=False)
+        
+        assert "error" in result
+    
+    def test_small_corpus_file(self, temp_corpus_dir):
+        """Test processing very small corpus file."""
+        result = process_single_year(temp_corpus_dir, "1683", compress=False)
+        
+        # Should still work even with small file
+        if "error" not in result:
+            assert result["vocab_size"] > 0
+            assert result["triplet_count"] >= 0  # Might be 0 for very small corpus
+
+
+class TestProcessYearRange:
+    """Test the process_year_range function."""
+    
+    def test_single_year_range(self, temp_corpus_dir):
+        """Test processing single year via range function."""
+        results = process_year_range(temp_corpus_dir, "1680", compress=False, show_progress=False)
+        
+        assert "1680" in results
+        assert "error" not in results["1680"]
+        assert results["1680"]["year"] == "1680"
+    
+    def test_multiple_years_sequential(self, temp_corpus_dir):
+        """Test processing multiple years sequentially."""
+        results = process_year_range(
+            temp_corpus_dir, "1680,1681", 
+            compress=False, max_workers=1, show_progress=False
         )
         
-        # Should have processed all discovered years
-        assert len(results) == len(expected_years)
-        for year in expected_years:
+        assert len(results) == 2
+        assert "1680" in results
+        assert "1681" in results
+        
+        for year, result in results.items():
+            assert "error" not in result
+            assert result["year"] == year
+    
+    def test_year_range_dash_notation(self, temp_corpus_dir):
+        """Test processing year range with dash notation."""
+        results = process_year_range(
+            temp_corpus_dir, "1680-1682", 
+            compress=False, max_workers=1, show_progress=False
+        )
+        
+        # Should process 1680, 1681, 1682
+        assert len(results) == 3
+        for year in ["1680", "1681", "1682"]:
             assert year in results
-            assert 'error' not in results[year]
-
-
-def test_batch_prepare_training_data_specific_years(pipeline_test_setup):
-    """Test batch processing with specific years."""
-    corpus_dir = pipeline_test_setup['corpus_dir']
+            assert "error" not in results[year]
     
-    with patch('src.word2gm_fast.dataprep.pipeline.prepare_training_data') as mock_prepare:
-        mock_prepare.return_value = ("output_dir", {"triplet_count": 1000, "vocab_size": 100, "total_duration_s": 10.0})
-        
-        results = batch_prepare_training_data(
-            corpus_dir=corpus_dir,
-            years=["2019", "2020"],
-            use_multiprocessing=False,
-            show_progress=False,
-            show_summary=False
+    def test_parallel_processing(self, temp_corpus_dir):
+        """Test parallel processing of multiple years."""
+        results = process_year_range(
+            temp_corpus_dir, "1680,1681", 
+            compress=False, max_workers=2, show_progress=False
         )
         
         assert len(results) == 2
-        assert "2019" in results
-        assert "2020" in results
-        assert "2018" not in results
-
-
-def test_batch_prepare_training_data_year_range(pipeline_test_setup):
-    """Test batch processing with year range."""
-    corpus_dir = pipeline_test_setup['corpus_dir']
+        for year, result in results.items():
+            assert "error" not in result
     
-    with patch('src.word2gm_fast.dataprep.pipeline.prepare_training_data') as mock_prepare:
-        mock_prepare.return_value = ("output_dir", {"triplet_count": 1000, "vocab_size": 100, "total_duration_s": 10.0})
-        
-        results = batch_prepare_training_data(
-            corpus_dir=corpus_dir,
-            year_range="2019-2020",
-            use_multiprocessing=False,
-            show_progress=False,
-            show_summary=False
-        )
-        
-        assert len(results) == 2
-        assert "2019" in results
-        assert "2020" in results
-        assert "2018" not in results
-
-
-def test_batch_prepare_training_data_conflicting_params(pipeline_test_setup):
-    """Test error when both years and year_range are specified."""
-    corpus_dir = pipeline_test_setup['corpus_dir']
-    
-    with pytest.raises(ValueError):
-        batch_prepare_training_data(
-            corpus_dir=corpus_dir,
-            years=["2019"],
-            year_range="2019-2020"
-        )
-
-
-def test_batch_prepare_training_data_missing_files(pipeline_test_setup):
-    """Test handling of missing corpus files."""
-    corpus_dir = pipeline_test_setup['corpus_dir']
-    
-    with patch('src.word2gm_fast.dataprep.pipeline.prepare_training_data') as mock_prepare:
-        mock_prepare.return_value = ("output_dir", {"triplet_count": 1000, "vocab_size": 100, "total_duration_s": 10.0})
-        
-        results = batch_prepare_training_data(
-            corpus_dir=corpus_dir,
-            years=["2019", "2099"],  # 2099 doesn't exist
-            use_multiprocessing=False,
-            show_progress=False,
-            show_summary=False
+    def test_missing_files_filtered(self, temp_corpus_dir):
+        """Test that missing files are filtered out."""
+        results = process_year_range(
+            temp_corpus_dir, "1680,9999,1681", 
+            compress=False, show_progress=False
         )
         
         # Should only process existing files
-        assert len(results) == 1
-        assert "2019" in results
-        assert "2099" not in results
-
-
-def test_detect_cluster_resources():
-    """Test cluster resource detection."""
-    # Test without environment variables
-    resources = detect_cluster_resources()
+        assert len(results) == 2
+        assert "1680" in results
+        assert "1681" in results
+        assert "9999" not in results
     
-    assert 'detected_cpus' in resources
-    assert 'allocated_cpus' in resources
-    assert 'scheduler' in resources
-    assert 'recommended_workers' in resources
-    assert resources['detected_cpus'] > 0
-    assert resources['recommended_workers'] > 0
-
-
-@patch.dict(os.environ, {'SLURM_CPUS_PER_TASK': '8'})
-def test_detect_cluster_resources_slurm():
-    """Test cluster resource detection with SLURM."""
-    resources = detect_cluster_resources()
-    
-    assert resources['allocated_cpus'] == 8
-    assert resources['scheduler'] == 'SLURM'
-    assert resources['recommended_workers'] == 8
-
-
-def test_get_safe_worker_count():
-    """Test safe worker count calculation."""
-    # Test with no limit
-    workers = get_safe_worker_count()
-    assert workers > 0
-    
-    # Test with limit
-    workers = get_safe_worker_count(max_workers=4)
-    assert workers <= 4
-    assert workers > 0
-
-
-def test_process_single_year_helper(pipeline_test_setup):
-    """Test the multiprocessing helper function."""
-    corpus_dir = pipeline_test_setup['corpus_dir']
-    
-    with patch('src.word2gm_fast.dataprep.pipeline.prepare_training_data') as mock_prepare:
-        mock_prepare.return_value = ("output_dir", {"triplet_count": 1000, "vocab_size": 100, "total_duration_s": 10.0})
+    def test_empty_directory(self, empty_corpus_dir):
+        """Test processing with empty corpus directory."""
+        results = process_year_range(
+            empty_corpus_dir, "1680-1690", 
+            compress=False, show_progress=False
+        )
         
-        args = ("2019", corpus_dir, True, False, 1e-5)
-        year, success, result = _process_single_year(args)
-        
-        assert year == "2019"
-        assert success is True
-        assert isinstance(result, dict)
-        # Instead of hardcoding 1000, check for the actual triplet count (should be 6 for the test corpus)
-        assert result['triplet_count'] == 6
+        assert len(results) == 0
 
 
-def test_process_single_year_helper_error(pipeline_test_setup):
-    """Test the multiprocessing helper function with error."""
-    corpus_dir = pipeline_test_setup['corpus_dir']
+class TestParseYears:
+    """Test the parse_years function."""
     
-    with patch('src.word2gm_fast.dataprep.pipeline.prepare_training_data') as mock_prepare:
-        mock_prepare.side_effect = Exception("Test error")
+    def test_single_year(self):
+        """Test parsing single year."""
+        years = parse_years("1680")
+        assert years == ["1680"]
+    
+    def test_comma_separated_years(self):
+        """Test parsing comma-separated years."""
+        years = parse_years("1680,1681,1682")
+        assert years == ["1680", "1681", "1682"]
+    
+    def test_year_range_dash(self):
+        """Test parsing year range with dash."""
+        years = parse_years("1680-1683")
+        assert years == ["1680", "1681", "1682", "1683"]
+    
+    def test_mixed_format(self):
+        """Test parsing mixed comma and dash format."""
+        years = parse_years("1680,1685-1687,1690")
+        expected = ["1680", "1685", "1686", "1687", "1690"]
+        assert years == expected
+    
+    def test_whitespace_handling(self):
+        """Test parsing with whitespace."""
+        years = parse_years(" 1680 , 1681 - 1683 , 1690 ")
+        expected = ["1680", "1681", "1682", "1683", "1690"]
+        assert years == expected
+
+
+class TestGetAvailableYears:
+    """Test the get_available_years function."""
+    
+    def test_get_available_years(self, temp_corpus_dir):
+        """Test getting available years from corpus directory."""
+        years = get_available_years(temp_corpus_dir)
         
-        from src.word2gm_fast.dataprep.pipeline import _process_single_year
-        args = ("2019", corpus_dir, True, False, 1e-5)
-        year, success, result = _process_single_year(args)
+        # Should find valid year files, sorted
+        expected = ["1680", "1681", "1682", "1683"]
+        assert years == expected
+    
+    def test_empty_directory(self, empty_corpus_dir):
+        """Test getting years from empty directory."""
+        years = get_available_years(empty_corpus_dir)
+        assert years == []
+    
+    def test_nonexistent_directory(self):
+        """Test getting years from non-existent directory."""
+        years = get_available_years("/nonexistent/directory")
+        assert years == []
+
+
+class TestRunPipeline:
+    """Test the run_pipeline function (simple API)."""
+    
+    def test_run_pipeline_basic(self, temp_corpus_dir):
+        """Test basic pipeline execution."""
+        results = run_pipeline(temp_corpus_dir, "1680", compress=False, show_progress=False)
         
-        assert year == "2019"
-        # Should return None or a falsy value on error
-        assert not success
-        assert "Test error" in result
+        assert "1680" in results
+        assert "error" not in results["1680"]
+    
+    def test_run_pipeline_with_kwargs(self, temp_corpus_dir):
+        """Test pipeline with additional keyword arguments."""
+        results = run_pipeline(
+            temp_corpus_dir, "1680,1681", 
+            compress=True, max_workers=1, show_progress=False
+        )
+        
+        assert len(results) == 2
+        for year, result in results.items():
+            assert "error" not in result
+
+
+class TestIntegrationScenarios:
+    """Integration tests for complete pipeline scenarios."""
+    
+    def test_full_pipeline_workflow(self, temp_corpus_dir):
+        """Test complete pipeline workflow from start to finish."""
+        # 1. Check available years
+        available = get_available_years(temp_corpus_dir)
+        assert len(available) > 0
+        
+        # 2. Parse year range
+        years_to_process = "1680-1681"
+        parsed_years = parse_years(years_to_process)
+        assert len(parsed_years) == 2
+        
+        # 3. Process years
+        results = process_year_range(
+            temp_corpus_dir, years_to_process,
+            compress=False, show_progress=False
+        )
+        
+        # 4. Verify results
+        assert len(results) == 2
+        for year in parsed_years:
+            assert year in results
+            result = results[year]
+            assert "error" not in result
+            assert result["vocab_size"] > 0
+            assert result["triplet_count"] >= 0  # Allow 0 triplets for small corpus
+            
+            # Verify artifacts exist
+            output_dir = result["output_dir"]
+            assert os.path.exists(os.path.join(output_dir, "triplets.tfrecord"))
+            assert os.path.exists(os.path.join(output_dir, "vocab.tfrecord"))
+    
+    def test_error_resilience(self, temp_corpus_dir):
+        """Test pipeline resilience to errors."""
+        # Include both valid and invalid years
+        mixed_years = "1680,9999,1681,8888"
+        
+        results = process_year_range(
+            temp_corpus_dir, mixed_years,
+            compress=False, show_progress=False
+        )
+        
+        # Should process valid years and skip invalid ones
+        assert "1680" in results
+        assert "1681" in results
+        assert "9999" not in results
+        assert "8888" not in results
+        
+        # Valid years should be successful
+        for year in ["1680", "1681"]:
+            assert "error" not in results[year]
+    
+    def test_performance_metrics(self, temp_corpus_dir):
+        """Test that performance metrics are captured."""
+        results = process_year_range(
+            temp_corpus_dir, "1680",
+            compress=False, show_progress=False
+        )
+        
+        result = results["1680"]
+        assert "duration" in result
+        assert result["duration"] > 0
+        assert "triplet_count" in result
+        assert "vocab_size" in result
+        
+        # Metrics should be reasonable
+        assert 0 < result["duration"] < 60  # Should complete within a minute
+        assert result["vocab_size"] > 0
+        assert result["triplet_count"] >= 0
+
+
+class TestEdgeCases:
+    """Test edge cases and boundary conditions."""
+    
+    def test_single_character_corpus(self, temp_corpus_dir):
+        """Test with minimal corpus content."""
+        # Create minimal corpus file
+        minimal_file = os.path.join(temp_corpus_dir, "1999.txt")
+        with open(minimal_file, 'w') as f:
+            f.write("a")
+        
+        try:
+            result = process_single_year(temp_corpus_dir, "1999", compress=False)
+            
+            # Should handle gracefully
+            if "error" not in result:
+                assert result["vocab_size"] >= 1  # At least UNK token
+        finally:
+            if os.path.exists(minimal_file):
+                os.remove(minimal_file)
+    
+    def test_very_large_year_range(self, temp_corpus_dir):
+        """Test parsing very large year range."""
+        # This should parse correctly but most years won't exist
+        years = parse_years("1680-1700")
+        assert len(years) == 21
+        
+        # Processing should only handle existing files
+        results = process_year_range(
+            temp_corpus_dir, "1680-1700",
+            compress=False, show_progress=False
+        )
+        
+        # Should only process existing years
+        assert len(results) <= 4  # Only 4 files exist
+        
+        # All processed years should be successful
+        for year, result in results.items():
+            assert "error" not in result

@@ -6,6 +6,7 @@ Provides functions to save and load skip-gram triplets datasets as TFRecord file
 
 import tensorflow as tf
 import time
+import os
 from typing import List, Optional, Union
 from IPython import display
 
@@ -34,6 +35,10 @@ def write_triplets_to_tfrecord(
     """
     if compress and not output_path.endswith(".gz"):
         output_path += ".gz"
+    
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
     options = tf.io.TFRecordOptions(compression_type="GZIP") if compress else None
     display.display_markdown(
         f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Writing TFRecord to: {output_path}</span>",
