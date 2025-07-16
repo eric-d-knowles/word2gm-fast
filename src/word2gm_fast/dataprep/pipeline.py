@@ -9,8 +9,9 @@ import os
 import time
 from typing import Optional, List, Dict
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from IPython import display
 
-def process_single_year(corpus_dir: str, year: str, compress: bool = True) -> Dict:
+def process_single_year(corpus_dir: str, year: str, compress: bool = True, downsample_threshold: float = 1e-5) -> Dict:
     """
     Process a single year's corpus file.
     
@@ -22,6 +23,8 @@ def process_single_year(corpus_dir: str, year: str, compress: bool = True) -> Di
         Year to process (e.g., "1684")
     compress : bool
         Whether to compress output files
+    downsample_threshold : float
+        Threshold for downsampling frequent words (default: 1e-5)
         
     Returns
     -------
@@ -64,7 +67,7 @@ def process_single_year(corpus_dir: str, year: str, compress: bool = True) -> Di
             string_triplets, _ = dataset_to_triplets(
                 dataset=dataset,
                 frequency_table=frequency_table,
-                downsample_threshold=1e-5,
+                downsample_threshold=downsample_threshold,
                 show_summary=False
             )
             
@@ -103,7 +106,8 @@ def process_year_range(
     year_range: str,
     compress: bool = True,
     max_workers: Optional[int] = None,
-    show_progress: bool = True
+    show_progress: bool = True,
+    downsample_threshold: float = 1e-5
 ) -> Dict[str, Dict]:
     """
     Process a range of years in parallel.
@@ -120,6 +124,8 @@ def process_year_range(
         Number of parallel workers (default: auto-detect)
     show_progress : bool
         Whether to show progress
+    downsample_threshold : float
+        Threshold for downsampling frequent words (default: 1e-5)
         
     Returns
     -------
@@ -144,14 +150,23 @@ def process_year_range(
     
     if not existing_years:
         if show_progress:
-            print(f"No corpus files found for years: {years}")
+            display.display_markdown(
+                f"<span style='font-family: monospace; font-size: 120%; font-weight: normal; color: orange;'>No corpus files found for years: {years}</span>",
+                raw=True
+            )
         return {}
     
     if show_progress:
-        print(f"Processing {len(existing_years)} years: {min(existing_years)}-{max(existing_years)}")
+        display.display_markdown(
+            f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Processing {len(existing_years)} years: {min(existing_years)}-{max(existing_years)}</span>",
+            raw=True
+        )
         if len(years) > len(existing_years):
             missing = len(years) - len(existing_years)
-            print(f"Skipping {missing} missing files")
+            display.display_markdown(
+                f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Skipping {missing} missing files</span>",
+                raw=True
+            )
     
     # Auto-detect workers
     if max_workers is None:
@@ -165,23 +180,35 @@ def process_year_range(
         # Sequential processing
         for year in existing_years:
             if show_progress:
-                print(f"Processing {year}...", end=" ", flush=True)
-            result = process_single_year(corpus_dir, year, compress)
+                display.display_markdown(
+                    f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Processing {year}...</span>",
+                    raw=True
+                )
+            result = process_single_year(corpus_dir, year, compress, downsample_threshold)
             results[year] = result
             if show_progress:
                 if "error" in result:
-                    print(f"FAILED: {result['error']}")
+                    display.display_markdown(
+                        f"<span style='font-family: monospace; font-size: 120%; font-weight: normal; color: red;'>FAILED: {result['error']}</span>",
+                        raw=True
+                    )
                 else:
-                    print(f"OK ({result['triplet_count']:,} triplets, {result['duration']:.1f}s)")
+                    display.display_markdown(
+                        f"<span style='font-family: monospace; font-size: 120%; font-weight: normal; color: green;'>OK ({result['triplet_count']:,} triplets, {result['duration']:.1f}s)</span>",
+                        raw=True
+                    )
     else:
         # Parallel processing
         if show_progress:
-            print(f"Using {max_workers} parallel workers")
+            display.display_markdown(
+                f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Using {max_workers} parallel workers</span>",
+                raw=True
+            )
         
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             # Submit all jobs
             future_to_year = {
-                executor.submit(process_single_year, corpus_dir, year, compress): year
+                executor.submit(process_single_year, corpus_dir, year, compress, downsample_threshold): year
                 for year in existing_years
             }
             
@@ -197,16 +224,25 @@ def process_year_range(
                     
                     if show_progress:
                         if "error" in result:
-                            print(f"{year}: FAILED ({completed}/{len(existing_years)})")
+                            display.display_markdown(
+                                f"<span style='font-family: monospace; font-size: 120%; font-weight: normal; color: red;'>{year}: FAILED ({completed}/{len(existing_years)})</span>",
+                                raw=True
+                            )
                         else:
                             triplets = result['triplet_count']
                             duration = result['duration']
-                            print(f"{year}: OK - {triplets:,} triplets ({duration:.1f}s) [{completed}/{len(existing_years)}]")
+                            display.display_markdown(
+                                f"<span style='font-family: monospace; font-size: 120%; font-weight: normal; color: green;'>{year}: OK - {triplets:,} triplets ({duration:.1f}s) [{completed}/{len(existing_years)}]</span>",
+                                raw=True
+                            )
                             
                 except Exception as e:
                     results[year] = {"error": str(e)}
                     if show_progress:
-                        print(f"{year}: ERROR - {e} [{completed}/{len(existing_years)}]")
+                        display.display_markdown(
+                            f"<span style='font-family: monospace; font-size: 120%; font-weight: normal; color: red;'>{year}: ERROR - {e} [{completed}/{len(existing_years)}]</span>",
+                            raw=True
+                        )
     
     total_time = time.perf_counter() - start_time
     
@@ -214,16 +250,25 @@ def process_year_range(
         successful = [y for y, r in results.items() if "error" not in r]
         failed = [y for y, r in results.items() if "error" in r]
         
-        print(f"\nCompleted in {total_time:.1f}s")
-        print(f"✅ Successful: {len(successful)} years")
+        summary_lines = [f"Completed in {total_time:.1f}s"]
+        summary_lines.append(f"Successful: {len(successful)} years")
         if failed:
-            print(f"❌ Failed: {len(failed)} years")
+            summary_lines.append(f"Failed: {len(failed)} years")
         
         if successful:
             total_triplets = sum(results[y]['triplet_count'] for y in successful)
             avg_vocab = sum(results[y]['vocab_size'] for y in successful) // len(successful)
-            print(f"📊 Total triplets: {total_triplets:,}")
-            print(f"📚 Average vocab: {avg_vocab:,}")
+            triplets_per_sec = int(total_triplets / total_time) if total_time > 0 else 0
+            summary_lines.append(f"Total triplets: {total_triplets:,}")
+            summary_lines.append(f"Average vocab: {avg_vocab:,}")
+            summary_lines.append(f"Triplets per second: {triplets_per_sec:,}")
+        
+        display.display_markdown(
+            "<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Summary:<br><br>{}<br></span>".format(
+                "<br>".join([f"- {line}" for line in summary_lines])
+            ),
+            raw=True
+        )
     
     return results
 
@@ -270,6 +315,6 @@ def run_pipeline(corpus_dir: str, years: str, **kwargs):
     years : str
         Years to process (e.g., "1680-1690")
     **kwargs
-        Additional options (compress, max_workers, show_progress)
+        Additional options (compress, max_workers, show_progress, downsample_threshold)
     """
     return process_year_range(corpus_dir, years, **kwargs)
