@@ -11,7 +11,7 @@ from typing import Optional, List, Dict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from IPython import display
 
-def process_single_year(corpus_dir: str, year: str, compress: bool = True, downsample_threshold: float = 1e-5) -> Dict:
+def process_single_year(corpus_dir: str, year: str, compress: bool = True, downsample_threshold: float = 1e-5, cache: bool = False) -> Dict:
     """
     Process a single year's corpus file.
     
@@ -25,6 +25,8 @@ def process_single_year(corpus_dir: str, year: str, compress: bool = True, downs
         Whether to compress output files
     downsample_threshold : float
         Threshold for downsampling frequent words (default: 1e-5)
+    cache : bool
+        Whether to enable caching in dataset operations (default: False)
         
     Returns
     -------
@@ -58,7 +60,7 @@ def process_single_year(corpus_dir: str, year: str, compress: bool = True, downs
         # Wrap all TensorFlow operations in silence context
         with silence_tensorflow():
             # 1. Load corpus
-            dataset, _ = make_dataset(corpus_path, show_summary=False)
+            dataset, _ = make_dataset(corpus_path, show_summary=False, cache=cache)
             
             # 2. Build frequency table
             frequency_table = dataset_to_frequency(dataset)
@@ -68,14 +70,16 @@ def process_single_year(corpus_dir: str, year: str, compress: bool = True, downs
                 dataset=dataset,
                 frequency_table=frequency_table,
                 downsample_threshold=downsample_threshold,
-                show_summary=False
+                show_summary=False,
+                cache=cache
             )
             
             # 4. Convert to integers and build vocab
             integer_triplets, vocab_table, vocab_list, vocab_size, _ = triplets_to_integers(
                 triplets_dataset=string_triplets,
                 frequency_table=frequency_table,
-                show_summary=False
+                show_summary=False,
+                cache=cache
             )
             
             # 5. Save artifacts
@@ -107,7 +111,8 @@ def process_year_range(
     compress: bool = True,
     max_workers: Optional[int] = None,
     show_progress: bool = True,
-    downsample_threshold: float = 1e-5
+    downsample_threshold: float = 1e-5,
+    cache: bool = False
 ) -> Dict[str, Dict]:
     """
     Process a range of years in parallel.
@@ -126,6 +131,8 @@ def process_year_range(
         Whether to show progress
     downsample_threshold : float
         Threshold for downsampling frequent words (default: 1e-5)
+    cache : bool
+        Whether to enable caching in dataset operations (default: False)
         
     Returns
     -------
@@ -184,7 +191,7 @@ def process_year_range(
                     f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Processing {year}...</span>",
                     raw=True
                 )
-            result = process_single_year(corpus_dir, year, compress, downsample_threshold)
+            result = process_single_year(corpus_dir, year, compress, downsample_threshold, cache)
             results[year] = result
             if show_progress:
                 if "error" in result:
@@ -208,7 +215,7 @@ def process_year_range(
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             # Submit all jobs
             future_to_year = {
-                executor.submit(process_single_year, corpus_dir, year, compress, downsample_threshold): year
+                executor.submit(process_single_year, corpus_dir, year, compress, downsample_threshold, cache): year
                 for year in existing_years
             }
             
@@ -315,6 +322,6 @@ def run_pipeline(corpus_dir: str, years: str, **kwargs):
     years : str
         Years to process (e.g., "1680-1690")
     **kwargs
-        Additional options (compress, max_workers, show_progress, downsample_threshold)
+        Additional options (compress, max_workers, show_progress, downsample_threshold, cache)
     """
     return process_year_range(corpus_dir, years, **kwargs)
