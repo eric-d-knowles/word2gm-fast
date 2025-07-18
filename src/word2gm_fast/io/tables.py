@@ -1,37 +1,29 @@
 """
 Lookup table creation utilities for word2GM skip-gram training data.
 
-Provides functions to create token-to-index and index-to-token lookup tables
-from vocabulary TFRecord files with optimized batched processing.
+Provides functions to create token-to-index and index-to-token 
+lookup tables from vocabulary TFRecord files with optimized batched processing.
 """
 
 import tensorflow as tf
 import time
-from typing import Optional, Set
-from IPython.display import display, Markdown
+from IPython import display
 from .vocab import parse_vocab_example
-from .triplets import load_triplets_from_tfrecord
 
 
 def create_token_to_index_table(
     tfrecord_path: str,
-    triplets_tfrecord_path: Optional[str] = None,
-    compressed: Optional[bool] = None,
+    compressed: bool = None,
     default_value: int = 0,
     batch_size: int = 1000
 ) -> tf.lookup.StaticHashTable:
     """
     Create a token-to-index lookup table from a TFRecord vocab file.
     
-    Optionally filters the vocabulary to only include tokens that appear in the triplets dataset.
-    
     Parameters
     ----------
     tfrecord_path : str
         Path to the vocabulary TFRecord file.
-    triplets_tfrecord_path : str, optional
-        Path to the triplets TFRecord file. If provided, only tokens that appear
-        in triplets will be included in the lookup table.
     compressed : bool, optional
         Whether the file is GZIP compressed. Auto-detected if None.
     default_value : int, optional
@@ -41,20 +33,18 @@ def create_token_to_index_table(
     Returns
     -------
     tf.lookup.StaticHashTable
-        Reconstructed token-to-index lookup table.
+        Token-to-index lookup table.
     """
     if compressed is None:
         compressed = tfrecord_path.endswith(".gz")
 
     compression_type = "GZIP" if compressed else None
 
-    display(Markdown(f"<pre>Loading token-to-index vocabulary TFRecord from: {tfrecord_path}</pre>"))
+    display.display_markdown(
+        f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Loading token-to-index vocabulary TFRecord from:<br>&nbsp;&nbsp;{tfrecord_path}</span>",
+        raw=True
+    )
     start = time.perf_counter()
-
-    # Get unique indices from triplets if triplets file is provided
-    valid_indices = None
-    if triplets_tfrecord_path is not None:
-        valid_indices = get_unique_indices_from_triplets(triplets_tfrecord_path, compressed)
 
     # Load the raw TFRecord dataset with optimized buffer settings
     raw_ds = tf.data.TFRecordDataset(
@@ -72,18 +62,11 @@ def create_token_to_index_table(
     # Extract words and IDs using optimized batched processing
     words = []
     ids = []
-    filtered_count = 0
-    total_count = 0
     
     for word_batch, id_batch, _ in vocab_ds:
         for word, id_val in zip(word_batch.numpy(), id_batch.numpy()):
-            total_count += 1
-            # Include token if no filtering or if it appears in triplets
-            if valid_indices is None or int(id_val) in valid_indices:
-                words.append(word)
-                ids.append(id_val)
-            else:
-                filtered_count += 1
+            words.append(word)
+            ids.append(id_val)
     
     # Create the lookup table
     token_to_index_table = tf.lookup.StaticHashTable(
@@ -91,38 +74,31 @@ def create_token_to_index_table(
             keys=tf.constant(words),
             values=tf.constant(ids, dtype=tf.int64)
         ),
-        default_value=default_value
+        default_value=tf.constant(default_value, dtype=tf.int64)
     )
 
     duration = time.perf_counter() - start
-    
-    if valid_indices is not None:
-        display(Markdown(f"<pre>Filtered vocabulary: kept {len(words)} tokens, removed {filtered_count} tokens not in triplets</pre>"))
-    
-    display(Markdown(f"<pre>Created token-to-index table with {len(words)} entries in {duration:.2f}s</pre>"))
+    display.display_markdown(
+        f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Token-to-index lookup table created successfully.<br>Table contains {len(words)} tokens. Processing time: {duration:.2f}s</span>",
+        raw=True
+    )
 
     return token_to_index_table
 
 
 def create_index_to_token_table(
     tfrecord_path: str,
-    triplets_tfrecord_path: Optional[str] = None,
-    compressed: Optional[bool] = None,
+    compressed: bool = None,
     default_value: str = "UNK",
     batch_size: int = 1000
 ) -> tf.lookup.StaticHashTable:
     """
     Create an index-to-token lookup table from a TFRecord vocab file.
     
-    Optionally filters the vocabulary to only include tokens that appear in the triplets dataset.
-    
     Parameters
     ----------
     tfrecord_path : str
         Path to the vocabulary TFRecord file.
-    triplets_tfrecord_path : str, optional
-        Path to the triplets TFRecord file. If provided, only tokens that appear
-        in triplets will be included in the lookup table.
     compressed : bool, optional
         Whether the file is GZIP compressed. Auto-detected if None.
     default_value : str, optional
@@ -132,20 +108,18 @@ def create_index_to_token_table(
     Returns
     -------
     tf.lookup.StaticHashTable
-        Reconstructed index-to-token lookup table.
+        Index-to-token lookup table.
     """
     if compressed is None:
         compressed = tfrecord_path.endswith(".gz")
 
     compression_type = "GZIP" if compressed else None
 
-    display(Markdown(f"<pre>Loading index-to-token vocab TFRecord from: {tfrecord_path}</pre>"))
+    display.display_markdown(
+        f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Loading index-to-token vocab TFRecord from:<br>&nbsp;&nbsp;{tfrecord_path}</span>",
+        raw=True
+    )
     start = time.perf_counter()
-
-    # Get unique indices from triplets if triplets file is provided
-    valid_indices = None
-    if triplets_tfrecord_path is not None:
-        valid_indices = get_unique_indices_from_triplets(triplets_tfrecord_path, compressed)
 
     # Load the raw TFRecord dataset with optimized buffer settings
     raw_ds = tf.data.TFRecordDataset(
@@ -163,133 +137,25 @@ def create_index_to_token_table(
     # Extract words and IDs using optimized batched processing
     words = []
     ids = []
-    filtered_count = 0
-    total_count = 0
 
     for word_batch, id_batch, _ in vocab_ds:
         for word, id_val in zip(word_batch.numpy(), id_batch.numpy()):
-            total_count += 1
-            # Include token if no filtering or if it appears in triplets
-            if valid_indices is None or int(id_val) in valid_indices:
-                words.append(word.decode('utf-8'))
-                ids.append(id_val)
-            else:
-                filtered_count += 1
+            words.append(word.decode('utf-8'))
+            ids.append(id_val)
 
-    # Create the lookup table (index -> token)
+    # Create the lookup table
     index_to_token_table = tf.lookup.StaticHashTable(
         tf.lookup.KeyValueTensorInitializer(
             keys=tf.constant(ids, dtype=tf.int64),
             values=tf.constant(words),
         ),
-        default_value=default_value
+        default_value=tf.constant(default_value, dtype=tf.string)
     )
 
     duration = time.perf_counter() - start
-    
-    if valid_indices is not None:
-        display(Markdown(f"<pre>Filtered vocabulary: kept {len(words)} tokens, removed {filtered_count} tokens not in triplets</pre>"))
-    
-    display(Markdown(f"<pre>Created index-to-token table with {len(words)} entries in {duration:.2f}s</pre>"))
+    display.display_markdown(
+        f"<span style='font-family: monospace; font-size: 120%; font-weight: normal;'>Index-to-token lookup table created successfully.<br>Table contains {len(words)} tokens. Processing time: {duration:.2f}s</span>",
+        raw=True
+    )
 
     return index_to_token_table
-
-
-def get_unique_indices_from_triplets(
-    triplets_tfrecord_path: str,
-    compressed: Optional[bool] = None,
-    batch_size: int = 10000
-) -> Set[int]:
-    """
-    Extract unique token indices that appear in the triplets dataset.
-    
-    Parameters
-    ----------
-    triplets_tfrecord_path : str
-        Path to the triplets TFRecord file.
-    compressed : bool, optional
-        Whether the file is GZIP compressed. Auto-detected if None.
-    batch_size : int, optional
-        Batch size for processing triplets. Default is 10000.
-        
-    Returns
-    -------
-    set[int]
-        Set of unique token indices that appear in triplets.
-    """
-    if compressed is None:
-        compressed = triplets_tfrecord_path.endswith(".gz")
-    
-    display(Markdown(f"<pre>Extracting unique indices from triplets: {triplets_tfrecord_path}</pre>"))
-    start = time.perf_counter()
-    
-    # Load triplets dataset
-    triplets_ds = load_triplets_from_tfrecord(triplets_tfrecord_path, compressed=compressed)
-    
-    # Collect unique indices
-    unique_indices = set()
-    
-    # Process in batches for efficiency
-    batched_ds = triplets_ds.batch(batch_size)
-    
-    for batch in batched_ds:
-        center_batch, positive_batch, negative_batch = batch
-        
-        # Convert to numpy and add to set
-        unique_indices.update(center_batch.numpy())
-        unique_indices.update(positive_batch.numpy())
-        unique_indices.update(negative_batch.numpy())
-    
-    duration = time.perf_counter() - start
-    display(Markdown(f"<pre>Found {len(unique_indices)} unique indices in {duration:.2f}s</pre>"))
-    
-    return unique_indices
-
-
-def create_filtered_lookup_tables(
-    vocab_tfrecord_path: str,
-    triplets_tfrecord_path: str,
-    compressed: Optional[bool] = None,
-    batch_size: int = 1000
-) -> tuple[tf.lookup.StaticHashTable, tf.lookup.StaticHashTable]:
-    """
-    Create both token-to-index and index-to-token lookup tables filtered by triplets.
-    
-    This is a convenience function that creates both lookup tables while only
-    scanning the triplets dataset once for efficiency.
-    
-    Parameters
-    ----------
-    vocab_tfrecord_path : str
-        Path to the vocabulary TFRecord file.
-    triplets_tfrecord_path : str
-        Path to the triplets TFRecord file.
-    compressed : bool, optional
-        Whether the files are GZIP compressed. Auto-detected if None.
-    batch_size : int, optional
-        Batch size for processing entries. Default is 1000.
-        
-    Returns
-    -------
-    tuple[tf.lookup.StaticHashTable, tf.lookup.StaticHashTable]
-        (token_to_index_table, index_to_token_table) filtered by triplets.
-    """
-    display(Markdown(f"<pre>Creating filtered lookup tables from vocab and triplets</pre>"))
-    
-    # Create both tables - each will scan triplets independently
-    # This is acceptable since the triplets scan is usually fast
-    token_to_index_table = create_token_to_index_table(
-        vocab_tfrecord_path, 
-        triplets_tfrecord_path=triplets_tfrecord_path,
-        compressed=compressed,
-        batch_size=batch_size
-    )
-    
-    index_to_token_table = create_index_to_token_table(
-        vocab_tfrecord_path,
-        triplets_tfrecord_path=triplets_tfrecord_path,
-        compressed=compressed,
-        batch_size=batch_size
-    )
-    
-    return token_to_index_table, index_to_token_table
