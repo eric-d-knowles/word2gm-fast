@@ -117,6 +117,21 @@ def train_one_epoch(model, optimizer, dataset, summary_writer=None, epoch=0):
                     step=current_step
                 )
 
+                # --- Additional metrics: KL divergence and variance constraint violations ---
+                # KL divergence from standard normal prior (mean 0, var 1)
+                kl_div = tf.reduce_mean(
+                    0.5 * (tf.square(model.mus) + tf.exp(model.logsigmas) - model.logsigmas - 1.0)
+                )
+                tf.summary.scalar("kl_divergence_from_prior", kl_div, step=current_step)
+
+                # Variance constraint violations
+                sigma_values = tf.exp(model.logsigmas)
+                lower_violations = tf.reduce_mean(tf.cast(sigma_values < model.config.lower_sig, tf.float32))
+                upper_violations = tf.reduce_mean(tf.cast(sigma_values > model.config.upper_sig, tf.float32))
+                tf.summary.scalar("sigma_lower_violations", lower_violations, step=current_step)
+                tf.summary.scalar("sigma_upper_violations", upper_violations, step=current_step)
+                # --- end additional metrics ---
+
                 if step % 500 == 0:
                     tf.summary.histogram(
                         "center_mean_norms",
